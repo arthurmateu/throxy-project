@@ -15,3 +15,24 @@
 ## PR instructions
 - Title format: `[<package_name>] <Title>` (e.g. `[web] Add dark mode`).
 - Always run `bun run check` and `bun run check-types` (and any tests) before committing.
+
+## Workflow & principles
+
+### Planning and execution
+- Enter plan mode for any non-trivial task (3+ steps or architectural decisions). If something goes sideways, stop and re-plan — don’t keep pushing.
+- Use plan mode for verification steps, not just building. Write detailed specs upfront to reduce ambiguity.
+- Prefer **functional programming** style throughout: pure functions, avoid mutable state, compose small functions.
+
+### Verification before done
+- Never mark a task complete without proving it works. Run tests, check logs, demonstrate correctness.
+- When relevant, diff behavior between main and your changes. Ask: “Would a staff engineer approve this?”
+
+### Testing
+- Create and run **unit tests for every new feature**; modify existing tests when behavior changes.
+- Fix failing tests and CI without being asked. Point at logs/errors, then resolve them.
+
+### Code quality
+- For non-trivial changes, pause and ask: “Is there a more elegant way?” Skip for simple, obvious fixes—don’t over-engineer.
+- **Simplicity first**: make every change as simple as possible; touch minimal code.
+- **No laziness**: find root causes, no temporary fixes. 
+- **Minimal impact**: only change what’s necessary.
