@@ -1,0 +1,3 @@
+{
+  "extends": "@throxy-interview/config/tsconfig.base.json"
+}
