@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { DataImport } from "@/components/data-import";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "@/components/leads-table";
 import { PromptOptimizer } from "@/components/prompt-optimizer";
@@ -41,6 +42,9 @@ export default function Home() {
 
 				{/* Stats Cards */}
 				<StatsCards />
+
+				{/* Data: Import CSV / Run test data */}
+				<DataImport />
 
 				{/* Ranking Controls */}
 				<div className="grid gap-6 lg:grid-cols-2">
