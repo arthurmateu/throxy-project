@@ -16,6 +16,12 @@
 - Title format: `[<package_name>] <Title>` (e.g. `[web] Add dark mode`).
 - Always run `bun run check` and `bun run check-types` (and any tests) before committing.
 
+## Hierarchical summarization
+
+- **Use summaries for progressive disclosure.** Start from the root [SUMMARY.md](./SUMMARY.md) (or the SUMMARY.md of the layer your task touches). Get a high-level picture first; follow downlinks into a child layer only when the task requires that detail. Do not load every summary—only the path relevant to the work.
+- **One canonical fact per node.** Shared contracts, config patterns, and architectural invariants live in the shallowest node where they are always relevant. Do not duplicate them in child nodes.
+- **Update the node when you change a layer.** After changing code in a package or app, update that layer’s `SUMMARY.md` so it stays accurate. Summary files live at the root of the layer they describe (repo root, `packages/<pkg>/`, `apps/<app>/`).
+
 ## Workflow & principles
 
 ### Planning and execution
