@@ -9,7 +9,7 @@ config({ path: resolve(__dirname, "../../../apps/server/.env") });
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
-  throw new Error("DATABASE_URL environment variable is required");
+	throw new Error("DATABASE_URL environment variable is required");
 }
 
 const db = drizzle(DATABASE_URL);
@@ -77,89 +77,89 @@ For each lead, return a JSON object with:
 Consider the lead's job title AND the company size when determining rank. A CEO at a 10,000+ employee company should be ranked lower than a VP of Sales Development, but a CEO at a 10-person startup should be ranked highly.`;
 
 async function parseCSV(content: string): Promise<Record<string, string>[]> {
-  const lines = content.trim().split("\n");
-  const headers = lines[0].split(",").map((h) => h.trim());
-  const rows: Record<string, string>[] = [];
+	const lines = content.trim().split("\n");
+	const headers = lines[0].split(",").map((h) => h.trim());
+	const rows: Record<string, string>[] = [];
 
-  for (let i = 1; i < lines.length; i++) {
-    const values: string[] = [];
-    let current = "";
-    let inQuotes = false;
+	for (let i = 1; i < lines.length; i++) {
+		const values: string[] = [];
+		let current = "";
+		let inQuotes = false;
 
-    for (const char of lines[i]) {
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === "," && !inQuotes) {
-        values.push(current.trim());
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    values.push(current.trim());
+		for (const char of lines[i]) {
+			if (char === '"') {
+				inQuotes = !inQuotes;
+			} else if (char === "," && !inQuotes) {
+				values.push(current.trim());
+				current = "";
+			} else {
+				current += char;
+			}
+		}
+		values.push(current.trim());
 
-    const row: Record<string, string> = {};
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = values[j] || "";
-    }
-    rows.push(row);
-  }
+		const row: Record<string, string> = {};
+		for (let j = 0; j < headers.length; j++) {
+			row[headers[j]] = values[j] || "";
+		}
+		rows.push(row);
+	}
 
-  return rows;
+	return rows;
 }
 
 async function seed() {
-  console.log("🌱 Starting seed...");
+	console.log("🌱 Starting seed...");
 
-  // Read and parse leads.csv
-  const csvPath = resolve(__dirname, "../../../leads.csv");
-  const csvContent = readFileSync(csvPath, "utf-8");
-  const rows = await parseCSV(csvContent);
+	// Read and parse leads.csv
+	const csvPath = resolve(__dirname, "../../../leads.csv");
+	const csvContent = readFileSync(csvPath, "utf-8");
+	const rows = await parseCSV(csvContent);
 
-  console.log(`📊 Found ${rows.length} leads in CSV`);
+	console.log(`📊 Found ${rows.length} leads in CSV`);
 
-  // Clear existing data
-  console.log("🗑️  Clearing existing data...");
-  await db.delete(leads);
-  await db.delete(prompts);
+	// Clear existing data
+	console.log("🗑️  Clearing existing data...");
+	await db.delete(leads);
+	await db.delete(prompts);
 
-  // Insert leads
-  console.log("📥 Inserting leads...");
-  const leadsToInsert = rows.map((row) => ({
-    accountName: row.account_name || "",
-    firstName: row.lead_first_name || "",
-    lastName: row.lead_last_name || "",
-    jobTitle: row.lead_job_title || "",
-    accountDomain: row.account_domain || null,
-    employeeRange: row.account_employee_range || null,
-    industry: row.account_industry || null,
-  }));
+	// Insert leads
+	console.log("📥 Inserting leads...");
+	const leadsToInsert = rows.map((row) => ({
+		accountName: row.account_name || "",
+		firstName: row.lead_first_name || "",
+		lastName: row.lead_last_name || "",
+		jobTitle: row.lead_job_title || "",
+		accountDomain: row.account_domain || null,
+		employeeRange: row.account_employee_range || null,
+		industry: row.account_industry || null,
+	}));
 
-  // Insert in batches of 50
-  const batchSize = 50;
-  for (let i = 0; i < leadsToInsert.length; i += batchSize) {
-    const batch = leadsToInsert.slice(i, i + batchSize);
-    await db.insert(leads).values(batch);
-    console.log(
-      `  Inserted ${Math.min(i + batchSize, leadsToInsert.length)}/${leadsToInsert.length} leads`
-    );
-  }
+	// Insert in batches of 50
+	const batchSize = 50;
+	for (let i = 0; i < leadsToInsert.length; i += batchSize) {
+		const batch = leadsToInsert.slice(i, i + batchSize);
+		await db.insert(leads).values(batch);
+		console.log(
+			`  Inserted ${Math.min(i + batchSize, leadsToInsert.length)}/${leadsToInsert.length} leads`,
+		);
+	}
 
-  // Insert default prompt
-  console.log("📝 Inserting default prompt...");
-  await db.insert(prompts).values({
-    version: 1,
-    content: DEFAULT_PROMPT,
-    isActive: true,
-    generation: 0,
-  });
+	// Insert default prompt
+	console.log("📝 Inserting default prompt...");
+	await db.insert(prompts).values({
+		version: 1,
+		content: DEFAULT_PROMPT,
+		isActive: true,
+		generation: 0,
+	});
 
-  console.log("✅ Seed complete!");
+	console.log("✅ Seed complete!");
 }
 
 seed()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error("❌ Seed failed:", err);
-    process.exit(1);
-  });
+	.then(() => process.exit(0))
+	.catch((err) => {
+		console.error("❌ Seed failed:", err);
+		process.exit(1);
+	});
