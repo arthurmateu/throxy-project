@@ -11,6 +11,7 @@
     "@base-ui/react": "^1.0.0",
     "@tanstack/react-form": "^1.27.3",
     "@tanstack/react-query": "^5.90.12",
+    "@tanstack/react-table": "^8.21.3",
     "@throxy-interview/api": "workspace:*",
     "@throxy-interview/env": "workspace:*",
     "@trpc/client": "catalog:",

@@ -31,3 +31,8 @@ export const trpc = createTRPCOptionsProxy<AppRouter>({
   client: trpcClient,
   queryClient,
 });
+
+// Hook for client components
+export function useTRPC() {
+  return trpc;
+}

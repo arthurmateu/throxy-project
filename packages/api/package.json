@@ -11,11 +11,14 @@
   },
   "scripts": {},
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
     "@throxy-interview/db": "workspace:*",
     "@throxy-interview/env": "workspace:*",
     "@trpc/client": "catalog:",
     "@trpc/server": "catalog:",
     "dotenv": "catalog:",
+    "drizzle-orm": "^0.45.1",
+    "openai": "^6.17.0",
     "zod": "catalog:"
   },
   "devDependencies": {

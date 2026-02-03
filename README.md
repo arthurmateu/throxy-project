@@ -1,74 +1,160 @@
-# throxy-interview
+# Persona Ranker - Throxy Technical Challenge
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Hono, TRPC, and more.
+AI-powered lead qualification and ranking system that scores and ranks leads against an ideal customer persona.
 
-## Features
-
-- **TypeScript** - For type safety and improved developer experience
-- **Next.js** - Full-stack React framework
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **shadcn/ui** - Reusable UI components
-- **Hono** - Lightweight, performant server framework
-- **tRPC** - End-to-end type-safe APIs
-- **Bun** - Runtime environment
-- **Drizzle** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Biome** - Linting and formatting
-- **Turborepo** - Optimized monorepo build system
-
-## Getting Started
-
-First, install the dependencies:
+## Quick Start
 
 ```bash
+# Install dependencies
 bun install
-```
 
-## Database Setup
+# Start Supabase local database
+cd packages/db && bunx supabase start
 
-This project uses PostgreSQL with Drizzle ORM.
+# Configure environment (copy the DATABASE_URL from Supabase output)
+# Add to apps/server/.env:
+# DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+# CORS_ORIGIN=http://localhost:3001
+# OPENAI_API_KEY=your-key-here  # or ANTHROPIC_API_KEY
 
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/server/.env` file with your PostgreSQL connection details.
+# Push database schema
+cd packages/db && bun run db:push
 
-3. Apply the schema to your database:
+# Seed the database with leads
+bun run db:seed
 
-```bash
-bun run db:push
-```
-
-Then, run the development server:
-
-```bash
+# Start development servers
 bun run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-The API is running at [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3001](http://localhost:3001) to use the application.
 
-## Git Hooks and Formatting
+## Architecture Overview
 
-- Format and lint fix: `bun run check`
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (Next.js)                       │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Leads Table │  │ Ranking UI   │  │ Prompt Optimizer  │  │
+│  │ (TanStack)  │  │ (Progress)   │  │ (Genetic Algo)    │  │
+│  └─────────────┘  └──────────────┘  └───────────────────┘  │
+└────────────────────────────┬────────────────────────────────┘
+                             │ tRPC
+┌────────────────────────────▼────────────────────────────────┐
+│                     Backend (Hono)                           │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
+│  │ Leads API   │  │ Ranking API  │  │ Optimizer API     │  │
+│  └─────────────┘  └──────────────┘  └───────────────────┘  │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │              AI Provider Factory                         ││
+│  │    (OpenAI / Anthropic with cost tracking)              ││
+│  └─────────────────────────────────────────────────────────┘│
+└────────────────────────────┬────────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────────┐
+│                  PostgreSQL (Supabase)                       │
+│    leads │ rankings │ ai_call_logs │ prompts                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Key Decisions
+
+### 1. Hybrid Batch Ranking Strategy
+Leads are grouped by company and ranked together in a single AI call. This approach:
+- Provides context for relative ranking within the same company
+- Reduces API costs by batching
+- Maintains consistency in rankings for the same organization
+
+### 2. Dual AI Provider Support
+The system supports both OpenAI and Anthropic, allowing:
+- Provider comparison for quality/cost trade-offs
+- Fallback options if one provider is unavailable
+- Flexibility for different ranking tasks
+
+### 3. Genetic Algorithm for Prompt Optimization
+The hard challenge uses a genetic algorithm approach:
+- **Population**: Multiple prompt variants
+- **Fitness**: Measured against pre-ranked eval_set.csv
+- **Selection**: Tournament selection of top performers
+- **Crossover**: AI combines best elements of two prompts
+- **Mutation**: AI modifies prompts based on error patterns
+
+### 4. Cost Tracking
+Every AI call is logged with:
+- Token counts (input/output)
+- Cost calculation based on model pricing
+- Duration for performance monitoring
+- Batch ID for grouping related calls
+
+## Features Implemented
+
+### MVP
+- [x] Load leads into database
+- [x] Execute AI ranking from frontend
+- [x] Display results in sortable table
+- [x] Show lead rankings with reasoning
+
+### Bonus Challenges
+- [x] **Easy**: Cost tracking + statistics
+- [x] **Easy**: Sortable table by rank
+- [x] **Easy**: Export top N leads per company to CSV
+- [x] **Medium**: Real-time ranking progress updates
+- [x] **Hard**: Automatic prompt optimization (genetic algorithm)
+
+## Tradeoffs
+
+1. **In-memory progress tracking**: Progress for ranking/optimization is stored in memory. For production, this should use Redis or similar.
+
+2. **Single-process optimization**: The genetic algorithm runs in a single process. For larger populations/generations, this could be parallelized.
+
+3. **Simplified fitness function**: Uses rank distance + relevance accuracy. Could be improved with weighted scoring for different rank tiers.
+
+4. **No authentication**: As specified, no auth layer is implemented. Would need to add for production use.
 
 ## Project Structure
 
 ```
 throxy-interview/
 ├── apps/
-│   ├── web/         # Frontend application (Next.js)
-│   └── server/      # Backend API (Hono, TRPC)
+│   ├── web/                    # Next.js frontend
+│   │   └── src/
+│   │       ├── app/            # Pages
+│   │       └── components/     # React components
+│   └── server/                 # Hono API server
 ├── packages/
-│   ├── api/         # API layer / business logic
-│   └── db/          # Database schema & queries
+│   ├── api/                    # tRPC routers & services
+│   │   └── src/
+│   │       ├── routers/        # API endpoints
+│   │       └── services/       # Business logic
+│   │           ├── ai-provider.ts      # OpenAI/Anthropic abstraction
+│   │           ├── ranking.ts          # Lead ranking logic
+│   │           └── prompt-optimizer.ts # Genetic algorithm
+│   ├── db/                     # Database schema & seed
+│   └── env/                    # Environment validation
+├── leads.csv                   # Input leads data
+├── eval_set.csv               # Pre-ranked evaluation set
+└── persona_spec.md            # Ideal customer persona
+```
+
+## Environment Variables
+
+```env
+# Required
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+CORS_ORIGIN=http://localhost:3001
+
+# AI Providers (at least one required for ranking)
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional
+AI_PROVIDER=openai  # Default provider (openai or anthropic)
 ```
 
 ## Available Scripts
 
-- `bun run dev`: Start all applications in development mode
-- `bun run build`: Build all applications
-- `bun run dev:web`: Start only the web application
-- `bun run dev:server`: Start only the server
-- `bun run check-types`: Check TypeScript types across all apps
-- `bun run db:push`: Push schema changes to database
-- `bun run db:studio`: Open database studio UI
-- `bun run check`: Run Biome formatting and linting
+- `bun run dev` - Start all applications in development mode
+- `bun run db:push` - Push schema changes to database
+- `bun run db:seed` - Seed database with leads.csv
+- `bun run db:studio` - Open Drizzle Studio
+- `bun run check` - Run linting and formatting
