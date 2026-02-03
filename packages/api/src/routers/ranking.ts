@@ -1,55 +1,72 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../index";
 import { env } from "@throxy-interview/env/server";
-import {
-  runRankingProcess,
-  getRankingProgress,
-  type RankingProgress,
-} from "../services/ranking";
-import { initAIProvider, type AIProvider } from "../services/ai-provider";
+import { runRankingProcess, getRankingProgress, type RankingProgress } from "../services/ranking";
+import { initAIProvider, getAvailableProviders, type AIProvider, type AIProviderConfig } from "../services/ai-provider";
+
+// ============================================================================
+// Shared Utilities
+// ============================================================================
+
+/** Get the AI provider config from environment */
+const getProviderConfig = (): AIProviderConfig => ({
+  openaiApiKey: env.OPENAI_API_KEY,
+  anthropicApiKey: env.ANTHROPIC_API_KEY,
+  openrouterApiKey: env.OPENROUTER_API_KEY,
+});
+
+/** Initialize AI provider from environment */
+const initializeAIProvider = () => {
+  const config = getProviderConfig();
+  return initAIProvider(config.openaiApiKey, config.anthropicApiKey, config.openrouterApiKey);
+};
+
+/** Get the provider to use (from input or default) */
+const resolveProvider = (inputProvider?: AIProvider): AIProvider =>
+  inputProvider ?? (env.AI_PROVIDER as AIProvider);
+
+/** Generate a unique batch ID */
+const generateBatchId = (): string => `batch_${Date.now()}`;
+
+// ============================================================================
+// Input Schemas
+// ============================================================================
+
+const startInputSchema = z
+  .object({
+    provider: z.enum(["openai", "anthropic", "openrouter"]).optional(),
+  })
+  .optional();
+
+const progressInputSchema = z.object({
+  batchId: z.string(),
+});
+
+// ============================================================================
+// Router
+// ============================================================================
 
 export const rankingRouter = router({
-  start: publicProcedure
-    .input(
-      z.object({
-        provider: z.enum(["openai", "anthropic"]).optional(),
-      }).optional()
-    )
-    .mutation(async ({ input }) => {
-      // Initialize AI provider with env keys
-      initAIProvider(env.OPENAI_API_KEY, env.ANTHROPIC_API_KEY);
+  start: publicProcedure.input(startInputSchema).mutation(async ({ input }) => {
+    initializeAIProvider();
 
-      const provider: AIProvider = input?.provider ?? (env.AI_PROVIDER as AIProvider);
-      const batchId = `batch_${Date.now()}`;
+    const provider = resolveProvider(input?.provider);
+    const batchId = generateBatchId();
 
-      // Start the ranking process in the background
-      runRankingProcess(provider, batchId).catch((error) => {
-        console.error("Ranking process failed:", error);
-      });
+    // Start the ranking process in the background
+    runRankingProcess(provider, batchId).catch((error) => {
+      console.error("Ranking process failed:", error);
+    });
 
-      return {
-        batchId,
-        message: "Ranking process started",
-      };
-    }),
+    return { batchId, message: "Ranking process started" };
+  }),
 
   progress: publicProcedure
-    .input(
-      z.object({
-        batchId: z.string(),
-      })
-    )
-    .query(async ({ input }): Promise<RankingProgress> => {
-      return getRankingProgress(input.batchId);
-    }),
+    .input(progressInputSchema)
+    .query(async ({ input }): Promise<RankingProgress> => getRankingProgress(input.batchId)),
 
-  availableProviders: publicProcedure.query(async () => {
-    const providers: AIProvider[] = [];
-    if (env.OPENAI_API_KEY) providers.push("openai");
-    if (env.ANTHROPIC_API_KEY) providers.push("anthropic");
-    return {
-      providers,
-      defaultProvider: env.AI_PROVIDER as AIProvider,
-    };
-  }),
+  availableProviders: publicProcedure.query(async () => ({
+    providers: getAvailableProviders(getProviderConfig()),
+    defaultProvider: env.AI_PROVIDER as AIProvider,
+  })),
 });

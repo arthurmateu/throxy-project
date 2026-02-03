@@ -1,11 +1,15 @@
 import { db } from "@throxy-interview/db";
 import * as schema from "@throxy-interview/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
+import { getAIProvider, type AIProvider, type AIResponse } from "./ai-provider";
 
 const { leads, rankings, aiCallLogs, prompts } = schema;
 type NewRanking = schema.NewRanking;
 type NewAiCallLog = schema.NewAiCallLog;
-import { getAIProvider, type AIProvider, type AIResponse } from "./ai-provider";
+
+// ============================================================================
+// Types
+// ============================================================================
 
 export interface RankingResult {
   leadId: string;
@@ -21,51 +25,6 @@ export interface RankingProgress {
   error?: string;
 }
 
-// In-memory progress tracking
-const progressMap = new Map<string, RankingProgress>();
-
-export function getRankingProgress(batchId: string): RankingProgress {
-  return (
-    progressMap.get(batchId) || {
-      total: 0,
-      completed: 0,
-      currentCompany: null,
-      status: "idle",
-    }
-  );
-}
-
-function updateProgress(batchId: string, update: Partial<RankingProgress>) {
-  const current = getRankingProgress(batchId);
-  progressMap.set(batchId, { ...current, ...update });
-}
-
-export async function getActivePrompt(): Promise<string> {
-  const activePrompt = await db
-    .select()
-    .from(prompts)
-    .where(eq(prompts.isActive, true))
-    .orderBy(desc(prompts.version))
-    .limit(1);
-
-  if (activePrompt.length === 0 || !activePrompt[0]) {
-    throw new Error("No active prompt found. Please run the seed script.");
-  }
-
-  return activePrompt[0].content;
-}
-
-export async function getActivePromptVersion(): Promise<number> {
-  const activePrompt = await db
-    .select({ version: prompts.version })
-    .from(prompts)
-    .where(eq(prompts.isActive, true))
-    .orderBy(desc(prompts.version))
-    .limit(1);
-
-  return activePrompt[0]?.version ?? 1;
-}
-
 interface LeadForRanking {
   id: string;
   firstName: string;
@@ -76,25 +35,75 @@ interface LeadForRanking {
   industry: string | null;
 }
 
-function buildRankingPrompt(
-  systemPrompt: string,
-  companyLeads: LeadForRanking[]
-): string {
-  const company = companyLeads[0]!;
-  const leadsInfo = companyLeads
-    .map(
-      (lead, idx) =>
-        `${idx + 1}. ID: ${lead.id}
+interface LeadsQueryOptions {
+  page?: number;
+  pageSize?: number;
+  sortBy?: "rank" | "name" | "company";
+  sortOrder?: "asc" | "desc";
+  showIrrelevant?: boolean;
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const DEFAULT_PROGRESS: RankingProgress = {
+  total: 0,
+  completed: 0,
+  currentCompany: null,
+  status: "idle",
+};
+
+const DEFAULT_QUERY_OPTIONS: Required<LeadsQueryOptions> = {
+  page: 1,
+  pageSize: 50,
+  sortBy: "rank",
+  sortOrder: "asc",
+  showIrrelevant: true,
+};
+
+// ============================================================================
+// Progress State Management (Functional Approach)
+// ============================================================================
+
+const progressMap = new Map<string, RankingProgress>();
+
+/** Get progress for a batch (pure read) */
+export const getRankingProgress = (batchId: string): RankingProgress =>
+  progressMap.get(batchId) ?? { ...DEFAULT_PROGRESS };
+
+/** Update progress immutably and store */
+const updateProgress = (batchId: string, update: Partial<RankingProgress>): RankingProgress => {
+  const current = getRankingProgress(batchId);
+  const updated = { ...current, ...update };
+  progressMap.set(batchId, updated);
+  return updated;
+};
+
+// ============================================================================
+// Pure Functions - Prompt Building
+// ============================================================================
+
+/** Format a single lead for the prompt */
+const formatLeadForPrompt = (lead: LeadForRanking, index: number): string =>
+  `${index + 1}. ID: ${lead.id}
    Name: ${lead.firstName} ${lead.lastName}
-   Title: ${lead.jobTitle}`
-    )
-    .join("\n\n");
+   Title: ${lead.jobTitle}`;
+
+/** Build the ranking prompt from system prompt and leads */
+const buildRankingPrompt = (systemPrompt: string, companyLeads: LeadForRanking[]): string => {
+  const company = companyLeads[0];
+  if (!company) throw new Error("No leads provided");
+
+  const leadsInfo = companyLeads.map(formatLeadForPrompt).join("\n\n");
+  const companySize = company.employeeRange ?? "Unknown size";
+  const industry = company.industry ?? "Unknown";
 
   return `${systemPrompt}
 
 ---
 
-Now rank the following leads from ${company.accountName} (${company.employeeRange || "Unknown size"} employees, Industry: ${company.industry || "Unknown"}):
+Now rank the following leads from ${company.accountName} (${companySize} employees, Industry: ${industry}):
 
 ${leadsInfo}
 
@@ -114,174 +123,266 @@ Important:
 - Lower numbers = better fit (1 is the best)
 - Consider company size when ranking - a CEO at a startup ranks differently than at an enterprise
 - Be concise in your reasoning (1-2 sentences max)`;
-}
+};
 
-function parseRankingResponse(
-  response: string,
-  leadIds: string[]
-): RankingResult[] {
+// ============================================================================
+// Pure Functions - Response Parsing
+// ============================================================================
+
+/** Extract JSON from a string response */
+const extractJson = (response: string): object | null => {
+  const jsonMatch = response.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
   try {
-    // Try to extract JSON from the response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON found in response");
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
-    const results: RankingResult[] = [];
-
-    if (Array.isArray(parsed.rankings)) {
-      for (const item of parsed.rankings) {
-        if (leadIds.includes(item.leadId)) {
-          results.push({
-            leadId: item.leadId,
-            rank: item.rank === null ? null : Number(item.rank),
-            reasoning: String(item.reasoning || ""),
-          });
-        }
-      }
-    }
-
-    // Add missing leads with error state
-    for (const id of leadIds) {
-      if (!results.find((r) => r.leadId === id)) {
-        results.push({
-          leadId: id,
-          rank: null,
-          reasoning: "Failed to parse ranking from AI response",
-        });
-      }
-    }
-
-    return results;
-  } catch (error) {
-    // Return all leads as failed
-    return leadIds.map((id) => ({
-      leadId: id,
-      rank: null,
-      reasoning: `Parse error: ${error instanceof Error ? error.message : "Unknown error"}`,
-    }));
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    return null;
   }
-}
+};
 
-export async function rankLeadsBatch(
+/** Create a failed ranking result */
+const createFailedResult = (leadId: string, reason: string): RankingResult => ({
+  leadId,
+  rank: null,
+  reasoning: reason,
+});
+
+/** Parse a single ranking item from the response */
+const parseRankingItem = (item: { leadId?: string; rank?: number | null; reasoning?: string }): RankingResult | null => {
+  if (!item.leadId) return null;
+  return {
+    leadId: item.leadId,
+    rank: item.rank === null ? null : Number(item.rank),
+    reasoning: String(item.reasoning ?? ""),
+  };
+};
+
+/** Parse the ranking response into results */
+const parseRankingResponse = (response: string, leadIds: string[]): RankingResult[] => {
+  const parsed = extractJson(response);
+  if (!parsed) {
+    return leadIds.map((id) => createFailedResult(id, "No JSON found in response"));
+  }
+
+  const rankings = (parsed as { rankings?: unknown[] }).rankings;
+  if (!Array.isArray(rankings)) {
+    return leadIds.map((id) => createFailedResult(id, "Invalid response format"));
+  }
+
+  const results: RankingResult[] = [];
+  const processedIds = new Set<string>();
+
+  for (const item of rankings) {
+    const result = parseRankingItem(item as { leadId?: string; rank?: number | null; reasoning?: string });
+    if (result && leadIds.includes(result.leadId)) {
+      results.push(result);
+      processedIds.add(result.leadId);
+    }
+  }
+
+  // Add missing leads as failed
+  for (const id of leadIds) {
+    if (!processedIds.has(id)) {
+      results.push(createFailedResult(id, "Failed to parse ranking from AI response"));
+    }
+  }
+
+  return results;
+};
+
+// ============================================================================
+// Pure Functions - Data Transformation
+// ============================================================================
+
+/** Group leads by company name */
+const groupLeadsByCompany = (allLeads: LeadForRanking[]): Map<string, LeadForRanking[]> => {
+  const grouped = new Map<string, LeadForRanking[]>();
+  for (const lead of allLeads) {
+    const existing = grouped.get(lead.accountName) ?? [];
+    grouped.set(lead.accountName, [...existing, lead]);
+  }
+  return grouped;
+};
+
+/** Convert ranking result to database entry */
+const toRankingEntry = (result: RankingResult, promptVersion: number): NewRanking => ({
+  leadId: result.leadId,
+  rank: result.rank,
+  relevanceScore: result.rank !== null ? (11 - result.rank) / 10 : 0,
+  reasoning: result.reasoning,
+  promptVersion,
+});
+
+/** Convert AI response to log entry */
+const toAiCallLogEntry = (
+  aiResponse: AIResponse,
+  provider: AIProvider,
+  batchId: string,
+  promptVersion: number
+): NewAiCallLog => ({
+  provider,
+  model: aiResponse.model,
+  inputTokens: aiResponse.inputTokens,
+  outputTokens: aiResponse.outputTokens,
+  cost: aiResponse.cost,
+  durationMs: aiResponse.durationMs,
+  promptVersion,
+  batchId,
+});
+
+/** Calculate pagination info */
+const calculatePagination = (page: number, pageSize: number, totalCount: number) => ({
+  page,
+  pageSize,
+  totalCount,
+  totalPages: Math.ceil(totalCount / pageSize),
+});
+
+// ============================================================================
+// Database Operations
+// ============================================================================
+
+/** Fetch the active prompt from database */
+export const getActivePrompt = async (): Promise<string> => {
+  const activePrompt = await db
+    .select()
+    .from(prompts)
+    .where(eq(prompts.isActive, true))
+    .orderBy(desc(prompts.version))
+    .limit(1);
+
+  if (activePrompt.length === 0 || !activePrompt[0]) {
+    throw new Error("No active prompt found. Please run the seed script.");
+  }
+
+  return activePrompt[0].content;
+};
+
+/** Fetch the active prompt version */
+export const getActivePromptVersion = async (): Promise<number> => {
+  const activePrompt = await db
+    .select({ version: prompts.version })
+    .from(prompts)
+    .where(eq(prompts.isActive, true))
+    .orderBy(desc(prompts.version))
+    .limit(1);
+
+  return activePrompt[0]?.version ?? 1;
+};
+
+/** Fetch all leads for ranking */
+const fetchAllLeads = async (): Promise<LeadForRanking[]> =>
+  db
+    .select({
+      id: leads.id,
+      firstName: leads.firstName,
+      lastName: leads.lastName,
+      jobTitle: leads.jobTitle,
+      accountName: leads.accountName,
+      employeeRange: leads.employeeRange,
+      industry: leads.industry,
+    })
+    .from(leads);
+
+/** Save rankings to database */
+const saveRankings = async (rankingsToInsert: NewRanking[]): Promise<void> => {
+  await db.insert(rankings).values(rankingsToInsert);
+};
+
+/** Log an AI call */
+const logAiCall = async (logEntry: NewAiCallLog): Promise<void> => {
+  await db.insert(aiCallLogs).values(logEntry);
+};
+
+/** Clear all rankings */
+const clearAllRankings = async (): Promise<void> => {
+  await db.delete(rankings);
+};
+
+// ============================================================================
+// AI Operations
+// ============================================================================
+
+/** Rank a batch of leads from one company */
+export const rankLeadsBatch = async (
   companyLeads: LeadForRanking[],
   systemPrompt: string,
   provider: AIProvider,
   batchId: string,
   promptVersion: number
-): Promise<{ results: RankingResult[]; aiResponse: AIResponse }> {
+): Promise<{ results: RankingResult[]; aiResponse: AIResponse }> => {
   const ai = getAIProvider();
   const userPrompt = buildRankingPrompt(systemPrompt, companyLeads);
 
-  const aiResponse = await ai.chat(provider, [
-    { role: "user", content: userPrompt },
-  ], {
+  const aiResponse = await ai.chat(provider, [{ role: "user", content: userPrompt }], {
     jsonMode: true,
     temperature: 0.2,
   });
 
-  // Log the AI call
-  const logEntry: NewAiCallLog = {
-    provider,
-    model: aiResponse.model,
-    inputTokens: aiResponse.inputTokens,
-    outputTokens: aiResponse.outputTokens,
-    cost: aiResponse.cost,
-    durationMs: aiResponse.durationMs,
-    promptVersion,
-    batchId,
-  };
-  await db.insert(aiCallLogs).values(logEntry);
+  await logAiCall(toAiCallLogEntry(aiResponse, provider, batchId, promptVersion));
 
   const leadIds = companyLeads.map((l) => l.id);
   const results = parseRankingResponse(aiResponse.content, leadIds);
 
   return { results, aiResponse };
-}
+};
 
-export async function runRankingProcess(
+// ============================================================================
+// Main Ranking Process
+// ============================================================================
+
+/** Process a single company's leads */
+const processCompany = async (
+  companyName: string,
+  companyLeads: LeadForRanking[],
+  systemPrompt: string,
   provider: AIProvider,
-  batchId: string
-): Promise<void> {
+  batchId: string,
+  promptVersion: number
+): Promise<number> => {
   try {
-    // Get all leads grouped by company
-    const allLeads = await db
-      .select({
-        id: leads.id,
-        firstName: leads.firstName,
-        lastName: leads.lastName,
-        jobTitle: leads.jobTitle,
-        accountName: leads.accountName,
-        employeeRange: leads.employeeRange,
-        industry: leads.industry,
-      })
-      .from(leads);
+    const { results } = await rankLeadsBatch(companyLeads, systemPrompt, provider, batchId, promptVersion);
+    const rankingsToInsert = results.map((r) => toRankingEntry(r, promptVersion));
+    await saveRankings(rankingsToInsert);
+    return companyLeads.length;
+  } catch (error) {
+    console.error(`Error ranking company ${companyName}:`, error);
+    return companyLeads.length; // Continue with next company
+  }
+};
 
-    // Group by company
-    const companiesMap = new Map<string, LeadForRanking[]>();
-    for (const lead of allLeads) {
-      const existing = companiesMap.get(lead.accountName) || [];
-      existing.push(lead);
-      companiesMap.set(lead.accountName, existing);
-    }
-
+/** Run the full ranking process */
+export const runRankingProcess = async (provider: AIProvider, batchId: string): Promise<void> => {
+  try {
+    const allLeads = await fetchAllLeads();
+    const companiesMap = groupLeadsByCompany(allLeads);
     const companies = Array.from(companiesMap.entries());
-    const totalLeads = allLeads.length;
 
-    updateProgress(batchId, {
-      total: totalLeads,
-      completed: 0,
-      status: "running",
-    });
+    updateProgress(batchId, { total: allLeads.length, completed: 0, status: "running" });
 
-    // Get active prompt
-    const systemPrompt = await getActivePrompt();
-    const promptVersion = await getActivePromptVersion();
+    const [systemPrompt, promptVersion] = await Promise.all([getActivePrompt(), getActivePromptVersion()]);
 
-    // Clear existing rankings for fresh run
-    await db.delete(rankings);
+    await clearAllRankings();
 
     let completedLeads = 0;
 
-    // Process each company
     for (const [companyName, companyLeads] of companies) {
       updateProgress(batchId, { currentCompany: companyName });
 
-      try {
-        const { results } = await rankLeadsBatch(
-          companyLeads,
-          systemPrompt,
-          provider,
-          batchId,
-          promptVersion
-        );
+      const processed = await processCompany(
+        companyName,
+        companyLeads,
+        systemPrompt,
+        provider,
+        batchId,
+        promptVersion
+      );
 
-        // Save rankings to database
-        const rankingsToInsert: NewRanking[] = results.map((r) => ({
-          leadId: r.leadId,
-          rank: r.rank,
-          relevanceScore: r.rank !== null ? (11 - r.rank) / 10 : 0,
-          reasoning: r.reasoning,
-          promptVersion,
-        }));
-
-        await db.insert(rankings).values(rankingsToInsert);
-
-        completedLeads += companyLeads.length;
-        updateProgress(batchId, { completed: completedLeads });
-      } catch (error) {
-        console.error(`Error ranking company ${companyName}:`, error);
-        // Continue with next company
-        completedLeads += companyLeads.length;
-        updateProgress(batchId, { completed: completedLeads });
-      }
+      completedLeads += processed;
+      updateProgress(batchId, { completed: completedLeads });
     }
 
-    updateProgress(batchId, {
-      status: "completed",
-      currentCompany: null,
-    });
+    updateProgress(batchId, { status: "completed", currentCompany: null });
   } catch (error) {
     updateProgress(batchId, {
       status: "error",
@@ -289,26 +390,38 @@ export async function runRankingProcess(
     });
     throw error;
   }
-}
+};
 
-export async function getLeadsWithRankings(options: {
-  page?: number;
-  pageSize?: number;
-  sortBy?: "rank" | "name" | "company";
-  sortOrder?: "asc" | "desc";
-  showIrrelevant?: boolean;
-}) {
-  const {
-    page = 1,
-    pageSize = 50,
-    sortBy = "rank",
-    sortOrder = "asc",
-    showIrrelevant = true,
-  } = options;
+// ============================================================================
+// Query Operations
+// ============================================================================
+
+/** Build sort order SQL for leads query */
+const buildSortOrder = (sortBy: string, sortOrder: string) => {
+  const direction = sortOrder === "asc" ? "ASC" : "DESC";
+  const nullHandling = sortOrder === "asc" ? 999 : -1;
+
+  switch (sortBy) {
+    case "rank":
+      return sql`COALESCE(${rankings.rank}, ${nullHandling}) ${sql.raw(direction)}`;
+    case "company":
+      return sql`${leads.accountName} ${sql.raw(direction)}`;
+    default:
+      return sql`${leads.lastName} ${sql.raw(direction)}`;
+  }
+};
+
+/** Get leads with their rankings */
+export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
+  const { page, pageSize, sortBy, sortOrder, showIrrelevant } = {
+    ...DEFAULT_QUERY_OPTIONS,
+    ...options,
+  };
 
   const offset = (page - 1) * pageSize;
+  const relevantFilter = showIrrelevant ? undefined : sql`${rankings.rank} IS NOT NULL`;
 
-  // Build the query with left join to include leads without rankings
+  // Base query
   let query = db
     .select({
       id: leads.id,
@@ -326,13 +439,8 @@ export async function getLeadsWithRankings(options: {
     .from(leads)
     .leftJoin(rankings, eq(leads.id, rankings.leadId));
 
-  // Filter irrelevant if needed
   if (!showIrrelevant) {
-    query = query.where(
-      and(
-        sql`${rankings.rank} IS NOT NULL`
-      )
-    ) as typeof query;
+    query = query.where(and(relevantFilter)) as typeof query;
   }
 
   // Get total count
@@ -340,81 +448,42 @@ export async function getLeadsWithRankings(options: {
     .select({ count: sql<number>`count(*)` })
     .from(leads)
     .leftJoin(rankings, eq(leads.id, rankings.leadId))
-    .where(
-      showIrrelevant
-        ? undefined
-        : sql`${rankings.rank} IS NOT NULL`
-    );
+    .where(relevantFilter);
 
   const totalCount = Number(countResult[0]?.count ?? 0);
 
-  // Apply sorting - put nulls at the end for rank
-  let orderedQuery;
-  if (sortBy === "rank") {
-    // For rank sorting, null ranks go to the end
-    orderedQuery = query.orderBy(
-      sortOrder === "asc"
-        ? sql`COALESCE(${rankings.rank}, 999) ASC`
-        : sql`COALESCE(${rankings.rank}, -1) DESC`
-    );
-  } else if (sortBy === "company") {
-    orderedQuery = query.orderBy(
-      sortOrder === "asc"
-        ? sql`${leads.accountName} ASC`
-        : sql`${leads.accountName} DESC`
-    );
-  } else {
-    orderedQuery = query.orderBy(
-      sortOrder === "asc"
-        ? sql`${leads.lastName} ASC`
-        : sql`${leads.lastName} DESC`
-    );
-  }
-
-  const results = await orderedQuery.limit(pageSize).offset(offset);
+  // Apply sorting and pagination
+  const results = await query
+    .orderBy(buildSortOrder(sortBy, sortOrder))
+    .limit(pageSize)
+    .offset(offset);
 
   return {
     leads: results,
-    pagination: {
-      page,
-      pageSize,
-      totalCount,
-      totalPages: Math.ceil(totalCount / pageSize),
-    },
+    pagination: calculatePagination(page, pageSize, totalCount),
   };
-}
+};
 
-export async function getRankingStats() {
-  // Get total leads
-  const totalLeadsResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(leads);
+/** Get ranking statistics */
+export const getRankingStats = async () => {
+  const [totalLeadsResult, rankedResult, relevantResult, aiStatsResult] = await Promise.all([
+    db.select({ count: sql<number>`count(*)` }).from(leads),
+    db.select({ count: sql<number>`count(*)` }).from(rankings),
+    db.select({ count: sql<number>`count(*)` }).from(rankings).where(sql`${rankings.rank} IS NOT NULL`),
+    db
+      .select({
+        totalCalls: sql<number>`count(*)`,
+        totalCost: sql<number>`COALESCE(sum(${aiCallLogs.cost}), 0)`,
+        totalInputTokens: sql<number>`COALESCE(sum(${aiCallLogs.inputTokens}), 0)`,
+        totalOutputTokens: sql<number>`COALESCE(sum(${aiCallLogs.outputTokens}), 0)`,
+        avgDuration: sql<number>`COALESCE(avg(${aiCallLogs.durationMs}), 0)`,
+      })
+      .from(aiCallLogs),
+  ]);
+
   const totalLeads = Number(totalLeadsResult[0]?.count ?? 0);
-
-  // Get ranked leads count
-  const rankedResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(rankings);
   const rankedLeads = Number(rankedResult[0]?.count ?? 0);
-
-  // Get relevant leads (non-null rank)
-  const relevantResult = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(rankings)
-    .where(sql`${rankings.rank} IS NOT NULL`);
   const relevantLeads = Number(relevantResult[0]?.count ?? 0);
-
-  // Get AI call stats
-  const aiStatsResult = await db
-    .select({
-      totalCalls: sql<number>`count(*)`,
-      totalCost: sql<number>`COALESCE(sum(${aiCallLogs.cost}), 0)`,
-      totalInputTokens: sql<number>`COALESCE(sum(${aiCallLogs.inputTokens}), 0)`,
-      totalOutputTokens: sql<number>`COALESCE(sum(${aiCallLogs.outputTokens}), 0)`,
-      avgDuration: sql<number>`COALESCE(avg(${aiCallLogs.durationMs}), 0)`,
-    })
-    .from(aiCallLogs);
-
   const aiStats = aiStatsResult[0];
 
   return {
@@ -430,4 +499,4 @@ export async function getRankingStats() {
       avgDurationMs: Number(aiStats?.avgDuration ?? 0),
     },
   };
-}
+};
