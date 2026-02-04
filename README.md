@@ -153,7 +153,7 @@ AI_PROVIDER=openai   # Default provider: openai | anthropic | gemini
 - Environment variables in Vercel:
   - `NEXT_PUBLIC_SERVER_URL` = your Vercel deployment URL (same origin)
   - `DATABASE_URL` = production Postgres connection string
-  - Supabase on Vercel: use the pooler URL (Transaction pooler) and include `sslmode=require`
+  - Supabase on Vercel: use the pooler URL (Transaction pooler) and include `sslmode=require` unless you provide a CA for `sslmode=verify-full`
     - Example: `postgresql://postgres:<password>@<project>.pooler.supabase.com:6543/postgres?sslmode=require`
   - `CORS_ORIGIN` = same origin as `NEXT_PUBLIC_SERVER_URL`
   - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (at least one)

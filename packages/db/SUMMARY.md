@@ -7,8 +7,11 @@
 **Contracts (canonical):**
 
 - **Tables:** `leads` (CSV-imported), `rankings` (AI per-lead, FK to leads), `aiCallLogs` (tokens/cost/duration per call), `prompts` (versioned content, `isActive`, eval score, generation/parent for optimizer). Types exported: `Lead`, `NewLead`, `Ranking`, `NewRanking`, `AiCallLog`, `NewAiCallLog`, `Prompt`, `NewPrompt`.
+- **Schema initialization:** `ensureDbSchema()` auto-creates the required tables (and `pgcrypto` extension) when the API starts, so first-run does not require `db:push`.
 - **Leads CSV columns (snake_case):** `account_name`, `lead_first_name`, `lead_last_name`, `lead_job_title`, `account_domain`, `account_employee_range`, `account_industry`. Parsed by `parseLeadsCSV` in `seed-utils`.
 - **Default prompt:** Stored in `seed-utils` as `DEFAULT_PROMPT`; used by seed and by API `runTestData`. Ranking scale 1–10 or null (irrelevant).
+- **Supabase SSL:** When `DATABASE_URL` includes `sslmode=require`, the pool strips `sslmode` from the connection string and sets `ssl.rejectUnauthorized=false` for Supabase pooler connections.
+- **Drizzle Kit SSL:** `db:push` applies the same `sslmode=require` normalization and disables cert verification for Supabase pooler URLs.
 
 **Downlinks:** None (schema, seed, and seed-utils are one cohesive layer).
 

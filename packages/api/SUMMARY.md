@@ -8,6 +8,7 @@
 
 - **Router surface:** `appRouter` from `src/routers/index.ts`; type `AppRouter` for client. Procedures: `healthCheck`, `leads.list` / `leads.stats` / `leads.importFromCsv` / `leads.runTestData`, `ranking.start` / `ranking.progress` / `ranking.availableProviders`, `export.topLeadsPerCompany`.
 - **AI providers:** openai, anthropic, gemini. Config from env; init via `initAIProvider` in routers that need AI. Ranking runs a background process keyed by `batchId`; progress stored in-memory (Map).
+- **DB bootstrap:** API context calls `ensureDbSchema()` so tables exist before handling requests.
 
 **Downlinks:**
 
