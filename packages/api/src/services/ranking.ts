@@ -41,6 +41,8 @@ interface LeadsQueryOptions {
 	sortBy?: "rank" | "name" | "company";
 	sortOrder?: "asc" | "desc";
 	showIrrelevant?: boolean;
+	/** When set, only return leads that are in the top N by rank within their company */
+	topPerCompany?: number;
 }
 
 // ============================================================================
@@ -344,12 +346,16 @@ export const rankLeadsBatch = async (
 	const ai = getAIProvider();
 	const userPrompt = buildRankingPrompt(systemPrompt, companyLeads);
 
+	// Allow enough tokens for full reasoning per lead (~200 tokens each) so output is not cut off
+	const maxTokens = Math.max(4096, 400 + companyLeads.length * 220);
+
 	const aiResponse = await ai.chat(
 		provider,
 		[{ role: "user", content: userPrompt }],
 		{
 			jsonMode: true,
 			temperature: 0.2,
+			maxTokens,
 		},
 	);
 
@@ -450,7 +456,7 @@ export const runRankingProcess = async (
 // Query Operations
 // ============================================================================
 
-/** Build sort order SQL for leads query */
+/** Primary sort expression for leads query */
 const buildSortOrder = (sortBy: string, sortOrder: string) => {
 	const direction = sortOrder === "asc" ? "ASC" : "DESC";
 	const nullHandling = sortOrder === "asc" ? 999 : -1;
@@ -465,52 +471,130 @@ const buildSortOrder = (sortBy: string, sortOrder: string) => {
 	}
 };
 
+/** Secondary sort: always by rank (best first) so e.g. company sort shows 1-1-7 not 1-7-1 */
+const RANK_SECONDARY_SORT = sql`COALESCE(${rankings.rank}, 999) ASC`;
+
+const MAX_LEADS_FOR_TOP_N = 5000;
+
+/** Filter to top N leads per company by rank (asc = best first), then sort and paginate in memory */
+function filterTopPerCompanyAndPaginate<
+	T extends { accountName: string; rank: number | null },
+>(
+	rows: T[],
+	topN: number,
+	sortBy: string,
+	sortOrder: string,
+	page: number,
+	pageSize: number,
+): { rows: T[]; totalCount: number } {
+	const byCompany = new Map<string, T[]>();
+	for (const row of rows) {
+		const list = byCompany.get(row.accountName) ?? [];
+		list.push(row);
+		byCompany.set(row.accountName, list);
+	}
+	const filtered: T[] = [];
+	for (const list of byCompany.values()) {
+		const sorted = [...list].sort((a, b) => {
+			const ar = a.rank ?? 999;
+			const br = b.rank ?? 999;
+			return ar - br;
+		});
+		filtered.push(...sorted.slice(0, topN));
+	}
+	// Apply requested sort with rank as secondary (best first within same group)
+	const direction = sortOrder === "asc" ? 1 : -1;
+	filtered.sort((a, b) => {
+		let cmp = 0;
+		if (sortBy === "rank") {
+			const ar = (a as { rank: number | null }).rank ?? 999;
+			const br = (b as { rank: number | null }).rank ?? 999;
+			cmp = ar - br;
+		} else if (sortBy === "company") {
+			cmp = (a.accountName ?? "").localeCompare(b.accountName ?? "");
+		} else {
+			cmp =
+				(a as { lastName?: string }).lastName?.localeCompare(
+					(b as { lastName?: string }).lastName ?? "",
+				) ?? 0;
+		}
+		if (cmp !== 0) return direction * cmp;
+		// Tiebreaker: rank ascending (best first), e.g. 1-1-7 within same company
+		const ar = (a as { rank: number | null }).rank ?? 999;
+		const br = (b as { rank: number | null }).rank ?? 999;
+		return ar - br;
+	});
+	const totalCount = filtered.length;
+	const offset = (page - 1) * pageSize;
+	const paginated = filtered.slice(offset, offset + pageSize);
+	return { rows: paginated, totalCount };
+}
+
 /** Get leads with their rankings */
 export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
-	const { page, pageSize, sortBy, sortOrder, showIrrelevant } = {
+	const { page, pageSize, sortBy, sortOrder, showIrrelevant, topPerCompany } = {
 		...DEFAULT_QUERY_OPTIONS,
 		...options,
 	};
 
-	const offset = (page - 1) * pageSize;
 	const relevantFilter = showIrrelevant
 		? undefined
 		: sql`${rankings.rank} IS NOT NULL`;
 
-	// Base query
+	const baseSelect = {
+		id: leads.id,
+		firstName: leads.firstName,
+		lastName: leads.lastName,
+		jobTitle: leads.jobTitle,
+		accountName: leads.accountName,
+		accountDomain: leads.accountDomain,
+		employeeRange: leads.employeeRange,
+		industry: leads.industry,
+		rank: rankings.rank,
+		reasoning: rankings.reasoning,
+		relevanceScore: rankings.relevanceScore,
+	};
+
 	let query = db
-		.select({
-			id: leads.id,
-			firstName: leads.firstName,
-			lastName: leads.lastName,
-			jobTitle: leads.jobTitle,
-			accountName: leads.accountName,
-			accountDomain: leads.accountDomain,
-			employeeRange: leads.employeeRange,
-			industry: leads.industry,
-			rank: rankings.rank,
-			reasoning: rankings.reasoning,
-			relevanceScore: rankings.relevanceScore,
-		})
+		.select(baseSelect)
 		.from(leads)
 		.leftJoin(rankings, eq(leads.id, rankings.leadId));
 
-	if (!showIrrelevant) {
+	if (!showIrrelevant && relevantFilter) {
 		query = query.where(and(relevantFilter)) as typeof query;
 	}
 
-	// Get total count
+	if (topPerCompany != null && topPerCompany > 0) {
+		// Fetch all (up to limit), filter to top N per company in memory, then paginate
+		const allRows = await query
+			.orderBy(buildSortOrder("rank", "asc"), RANK_SECONDARY_SORT)
+			.limit(MAX_LEADS_FOR_TOP_N);
+		const { rows, totalCount } = filterTopPerCompanyAndPaginate(
+			allRows,
+			topPerCompany,
+			sortBy,
+			sortOrder,
+			page,
+			pageSize,
+		);
+		return {
+			leads: rows,
+			pagination: calculatePagination(page, pageSize, totalCount),
+		};
+	}
+
+	const offset = (page - 1) * pageSize;
+
 	const countResult = await db
 		.select({ count: sql<number>`count(*)` })
 		.from(leads)
 		.leftJoin(rankings, eq(leads.id, rankings.leadId))
-		.where(relevantFilter);
+		.where(relevantFilter ?? sql`true`);
 
 	const totalCount = Number(countResult[0]?.count ?? 0);
 
-	// Apply sorting and pagination
 	const results = await query
-		.orderBy(buildSortOrder(sortBy, sortOrder))
+		.orderBy(buildSortOrder(sortBy, sortOrder), RANK_SECONDARY_SORT)
 		.limit(pageSize)
 		.offset(offset);
 

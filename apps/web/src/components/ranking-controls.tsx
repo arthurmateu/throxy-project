@@ -18,7 +18,7 @@ import { useTRPC } from "@/utils/trpc";
 // Types
 // ============================================================================
 
-type AIProvider = "openai" | "anthropic" | "openrouter";
+type AIProvider = "openai" | "anthropic" | "gemini";
 type RankingStatus = "idle" | "running" | "completed" | "error";
 
 interface ProviderButtonProps {
@@ -48,7 +48,7 @@ interface ProgressBarProps {
 const PROVIDER_LABELS: Record<AIProvider, string> = {
 	openai: "OpenAI",
 	anthropic: "Anthropic",
-	openrouter: "OpenRouter",
+	gemini: "Gemini",
 };
 
 const POLL_INTERVAL_MS = 1000;
@@ -119,7 +119,7 @@ const ProviderButton = ({
 const NoProviderWarning = () => (
 	<div className="rounded-md border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-600 dark:text-yellow-400">
 		No AI provider configured. Please add OPENAI_API_KEY, ANTHROPIC_API_KEY, or
-		OPENROUTER_API_KEY to your environment.
+		GEMINI_API_KEY to your environment.
 	</div>
 );
 

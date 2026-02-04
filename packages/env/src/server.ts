@@ -12,11 +12,9 @@ export const env = createEnv({
 		// AI Provider keys (at least one required for ranking)
 		OPENAI_API_KEY: z.string().optional(),
 		ANTHROPIC_API_KEY: z.string().optional(),
-		OPENROUTER_API_KEY: z.string().optional(),
+		GEMINI_API_KEY: z.string().optional(),
 		// Default AI provider to use
-		AI_PROVIDER: z
-			.enum(["openai", "anthropic", "openrouter"])
-			.default("openai"),
+		AI_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("openai"),
 	},
 	runtimeEnv: process.env,
 	emptyStringAsUndefined: true,

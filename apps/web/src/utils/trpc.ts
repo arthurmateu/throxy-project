@@ -11,7 +11,9 @@ export const queryClient = new QueryClient({
 			toast.error(error.message, {
 				action: {
 					label: "retry",
-					onClick: query.invalidate,
+					onClick: () => {
+						void query.invalidate();
+					},
 				},
 			});
 		},

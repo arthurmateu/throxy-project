@@ -6,7 +6,7 @@
 
 **Contracts (canonical):**
 
-- **Server env:** `DATABASE_URL`, `CORS_ORIGIN`, `NODE_ENV`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` (optional), `AI_PROVIDER` (enum: openai | anthropic | openrouter, default openai). Load with `dotenv/config` in server entrypoints.
+- **Server env:** `DATABASE_URL`, `CORS_ORIGIN`, `NODE_ENV`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (optional), `AI_PROVIDER` (enum: openai | anthropic | gemini, default openai). Load with `dotenv/config` in server entrypoints.
 - **Web env:** `NEXT_PUBLIC_SERVER_URL` (required). Used for tRPC base URL.
 - Import from `@throxy-interview/env/server` or `@throxy-interview/env/web` only; do not read `process.env` directly for these keys in application code.
 

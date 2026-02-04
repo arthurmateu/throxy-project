@@ -15,7 +15,7 @@ cd packages/db && bunx supabase start
 # Add to apps/server/.env:
 # DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 # CORS_ORIGIN=http://localhost:3001
-# OPENAI_API_KEY=your-key-here  # or ANTHROPIC_API_KEY
+# OPENAI_API_KEY=your-key-here  # or ANTHROPIC_API_KEY or GEMINI_API_KEY
 
 # Push database schema
 cd packages/db && bun run db:push
@@ -35,15 +35,15 @@ Open [http://localhost:3001](http://localhost:3001) to use the application.
 ┌─────────────────────────────────────────────────────────────┐
 │                     Frontend (Next.js)                       │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Leads Table │  │ Ranking UI   │  │ Prompt Optimizer  │  │
-│  │ (TanStack)  │  │ (Progress)   │  │ (Genetic Algo)    │  │
+│  │ Leads Table │  │ Ranking UI   │  │                    │  │
+│  │ (TanStack)  │  │ (Progress)   │  │                    │  │
 │  └─────────────┘  └──────────────┘  └───────────────────┘  │
 └────────────────────────────┬────────────────────────────────┘
                              │ tRPC
 ┌────────────────────────────▼────────────────────────────────┐
 │                     Backend (Hono)                           │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Leads API   │  │ Ranking API  │  │ Optimizer API     │  │
+│  │ Leads API   │  │ Ranking API  │  │                   │  │
 │  └─────────────┘  └──────────────┘  └───────────────────┘  │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │              AI Provider Factory                         ││
@@ -65,21 +65,15 @@ Leads are grouped by company and ranked together in a single AI call. This appro
 - Reduces API costs by batching
 - Maintains consistency in rankings for the same organization
 
-### 2. Dual AI Provider Support
-The system supports both OpenAI and Anthropic, allowing:
-- Provider comparison for quality/cost trade-offs
-- Fallback options if one provider is unavailable
-- Flexibility for different ranking tasks
+### 2. AI Provider Support
+The system supports multiple AI providers for ranking:
+- **OpenAI** (GPT-4o-mini and others)
+- **Anthropic** (Claude models)
+- **Google Gemini** (Gemini 2.0 Flash and others)
 
-### 3. Genetic Algorithm for Prompt Optimization
-The hard challenge uses a genetic algorithm approach:
-- **Population**: Multiple prompt variants
-- **Fitness**: Measured against pre-ranked eval_set.csv
-- **Selection**: Tournament selection of top performers
-- **Crossover**: AI combines best elements of two prompts
-- **Mutation**: AI modifies prompts based on error patterns
+You can configure one or more providers via environment variables and choose which to use when running ranking.
 
-### 4. Cost Tracking
+### 3. Cost Tracking
 Every AI call is logged with:
 - Token counts (input/output)
 - Cost calculation based on model pricing
@@ -99,7 +93,7 @@ Every AI call is logged with:
 - [x] **Easy**: Sortable table by rank
 - [x] **Easy**: Export top N leads per company to CSV
 - [x] **Medium**: Real-time ranking progress updates
-- [x] **Hard**: Automatic prompt optimization (genetic algorithm)
+- [ ] **Hard**: Automatic prompt optimization (genetic algorithm)
 
 ## Tradeoffs
 
@@ -126,9 +120,8 @@ throxy-interview/
 │   │   └── src/
 │   │       ├── routers/        # API endpoints
 │   │       └── services/       # Business logic
-│   │           ├── ai-provider.ts      # OpenAI/Anthropic abstraction
-│   │           ├── ranking.ts          # Lead ranking logic
-│   │           └── prompt-optimizer.ts # Genetic algorithm
+│   │           ├── ai-provider.ts      # OpenAI / Anthropic / Gemini
+│   │           └── ranking.ts          # Lead ranking logic
 │   ├── db/                     # Database schema & seed
 │   └── env/                    # Environment validation
 ├── leads.csv                   # Input leads data
@@ -146,10 +139,16 @@ CORS_ORIGIN=http://localhost:3001
 # AI Providers (at least one required for ranking)
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...   # From Google AI Studio (https://aistudio.google.com/apikey)
 
 # Optional
-AI_PROVIDER=openai  # Default provider (openai or anthropic)
+AI_PROVIDER=openai   # Default provider: openai | anthropic | gemini
 ```
+
+### Supported AI providers
+- **OpenAI** – set `OPENAI_API_KEY` for GPT models (e.g. gpt-4o-mini).
+- **Anthropic** – set `ANTHROPIC_API_KEY` for Claude models.
+- **Google Gemini** – set `GEMINI_API_KEY` for Gemini models (e.g. gemini-2.0-flash). Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
 
 ## Available Scripts
 

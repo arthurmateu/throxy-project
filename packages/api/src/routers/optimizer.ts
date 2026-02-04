@@ -42,7 +42,7 @@ const DEFAULT_OPTIMIZATION_OPTIONS = {
 const getProviderConfig = (): AIProviderConfig => ({
 	openaiApiKey: env.OPENAI_API_KEY,
 	anthropicApiKey: env.ANTHROPIC_API_KEY,
-	openrouterApiKey: env.OPENROUTER_API_KEY,
+	geminiApiKey: env.GEMINI_API_KEY,
 });
 
 /** Initialize AI provider from environment */
@@ -51,7 +51,7 @@ const initializeAIProvider = () => {
 	return initAIProvider(
 		config.openaiApiKey,
 		config.anthropicApiKey,
-		config.openrouterApiKey,
+		config.geminiApiKey,
 	);
 };
 
@@ -111,7 +111,7 @@ const getEvalSet = (): EvalLead[] => {
 
 const startInputSchema = z
 	.object({
-		provider: z.enum(["openai", "anthropic", "openrouter"]).optional(),
+		provider: z.enum(["openai", "anthropic", "gemini"]).optional(),
 		populationSize: z
 			.number()
 			.min(3)

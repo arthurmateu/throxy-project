@@ -79,7 +79,7 @@ function parseCSV(content: string): Record<string, string>[] {
 	const lines = content.trim().split("\n");
 	if (lines.length === 0) return [];
 
-	const headers = lines[0].split(",").map((h) => h.trim());
+	const headers = (lines[0] ?? "").split(",").map((h) => h.trim());
 	const rows: Record<string, string>[] = [];
 
 	for (let i = 1; i < lines.length; i++) {
@@ -87,7 +87,9 @@ function parseCSV(content: string): Record<string, string>[] {
 		let current = "";
 		let inQuotes = false;
 
-		for (const char of lines[i]) {
+		const line = lines[i];
+		if (line === undefined) continue;
+		for (const char of line) {
 			if (char === '"') {
 				inQuotes = !inQuotes;
 			} else if (char === "," && !inQuotes) {
@@ -101,7 +103,8 @@ function parseCSV(content: string): Record<string, string>[] {
 
 		const row: Record<string, string> = {};
 		for (let j = 0; j < headers.length; j++) {
-			row[headers[j]] = values[j] ?? "";
+			const key = headers[j];
+			if (key !== undefined) row[key] = values[j] ?? "";
 		}
 		rows.push(row);
 	}

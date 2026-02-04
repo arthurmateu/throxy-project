@@ -41,6 +41,8 @@ export const leadsRouter = router({
 					sortBy: z.enum(["rank", "name", "company"]).default("rank"),
 					sortOrder: z.enum(["asc", "desc"]).default("asc"),
 					showIrrelevant: z.boolean().default(true),
+					/** When set, only return top N leads per company (by rank) */
+					topPerCompany: z.number().min(1).max(50).optional(),
 				})
 				.optional(),
 		)

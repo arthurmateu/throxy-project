@@ -61,6 +61,9 @@ export function LeadsTable() {
 		{ id: "rank", desc: false },
 	]);
 	const [showIrrelevant, setShowIrrelevant] = useState(true);
+	const [topPerCompany, setTopPerCompany] = useState<number | undefined>(
+		undefined,
+	);
 	const [page, setPage] = useState(1);
 	const pageSize = 25;
 
@@ -80,6 +83,7 @@ export function LeadsTable() {
 			sortBy: sortBy as "rank" | "name" | "company",
 			sortOrder: sortOrder as "asc" | "desc",
 			showIrrelevant,
+			topPerCompany,
 		}),
 	);
 
@@ -87,22 +91,30 @@ export function LeadsTable() {
 		() => [
 			{
 				accessorKey: "rank",
-				header: ({ column }) => (
-					<Button
-						variant="ghost"
-						onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-						className="-ml-4"
-					>
-						Rank
-						{column.getIsSorted() === "asc" ? (
-							<ArrowUp className="ml-2 h-4 w-4" />
-						) : column.getIsSorted() === "desc" ? (
-							<ArrowDown className="ml-2 h-4 w-4" />
-						) : (
-							<ArrowUpDown className="ml-2 h-4 w-4" />
-						)}
-					</Button>
-				),
+				header: ({ column }) => {
+					// Rank is sorted by default (asc). When sorted by rank show direction; otherwise show default (asc) so the icon doesn't change when sorting by other columns.
+					const isRankSorted = sorting[0]?.id === "rank";
+					const rankDir =
+						isRankSorted && sorting[0]?.desc
+							? "desc"
+							: "asc"; // asc when sorted by rank or when another column is sorted (rank's default)
+					return (
+						<Button
+							variant="ghost"
+							onClick={() =>
+								column.toggleSorting(column.getIsSorted() === "asc")
+							}
+							className="-ml-4"
+						>
+							Rank
+							{rankDir === "asc" ? (
+								<ArrowUp className="ml-2 h-4 w-4" />
+							) : (
+								<ArrowDown className="ml-2 h-4 w-4" />
+							)}
+						</Button>
+					);
+				},
 				cell: ({ row }) => {
 					const rank = row.getValue("rank") as number | null;
 					return (
@@ -183,17 +195,14 @@ export function LeadsTable() {
 					if (!reasoning)
 						return <span className="text-muted-foreground">—</span>;
 					return (
-						<p
-							className="max-w-[300px] truncate text-muted-foreground text-sm"
-							title={reasoning}
-						>
+						<p className="max-w-[420px] whitespace-pre-wrap break-words text-muted-foreground text-sm">
 							{reasoning}
 						</p>
 					);
 				},
 			},
 		],
-		[],
+		[sorting],
 	);
 
 	const table = useReactTable({
@@ -223,8 +232,8 @@ export function LeadsTable() {
 
 	return (
 		<div className="space-y-4">
-			<div className="flex items-center justify-between">
-				<div className="flex items-center space-x-2">
+			<div className="flex flex-wrap items-center justify-between gap-3">
+				<div className="flex flex-wrap items-center gap-4">
 					<label className="flex items-center space-x-2 text-sm">
 						<input
 							type="checkbox"
@@ -236,6 +245,25 @@ export function LeadsTable() {
 							className="h-4 w-4 rounded border-gray-300"
 						/>
 						<span>Show irrelevant leads</span>
+					</label>
+					<label className="flex items-center gap-2 text-sm">
+						<span>Show top</span>
+						<input
+							type="number"
+							min={1}
+							placeholder="All"
+							value={topPerCompany ?? ""}
+							onChange={(e) => {
+								const v = e.target.value.trim();
+								const n = v === "" ? undefined : Number.parseInt(v, 10);
+								setTopPerCompany(
+									n === undefined || Number.isNaN(n) || n < 1 ? undefined : n,
+								);
+								setPage(1);
+							}}
+							className="w-20 rounded border border-input bg-background px-2 py-1 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+						/>
+						<span>leads per company</span>
 					</label>
 				</div>
 				<div className="text-muted-foreground text-sm">

@@ -76,8 +76,7 @@ export function DataImport() {
 			<CardHeader>
 				<CardTitle>Data</CardTitle>
 				<CardDescription>
-					Import your own CSV or load built-in test data (leads.csv + eval_set
-					for optimizer).
+					Import your own CSV or load built-in test data (leads.csv).
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-wrap items-center gap-3">

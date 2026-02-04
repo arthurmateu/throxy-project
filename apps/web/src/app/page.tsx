@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { DataImport } from "@/components/data-import";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "@/components/leads-table";
-import { PromptOptimizer } from "@/components/prompt-optimizer";
 import { RankingControls } from "@/components/ranking-controls";
 import { StatsCards } from "@/components/stats-card";
 import { useTRPC } from "@/utils/trpc";
@@ -47,10 +46,7 @@ export default function Home() {
 				<DataImport />
 
 				{/* Ranking Controls */}
-				<div className="grid gap-6 lg:grid-cols-2">
-					<RankingControls />
-					<PromptOptimizer />
-				</div>
+				<RankingControls />
 
 				{/* Leads Table */}
 				<div className="space-y-4">

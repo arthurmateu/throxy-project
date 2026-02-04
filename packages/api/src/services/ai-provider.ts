@@ -5,7 +5,7 @@ import OpenAI from "openai";
 // Types
 // ============================================================================
 
-export type AIProvider = "openai" | "anthropic" | "openrouter";
+export type AIProvider = "openai" | "anthropic" | "gemini";
 
 export interface AIMessage {
 	role: "system" | "user" | "assistant";
@@ -32,20 +32,21 @@ export interface ChatOptions {
 export interface AIProviderConfig {
 	openaiApiKey?: string;
 	anthropicApiKey?: string;
-	openrouterApiKey?: string;
+	geminiApiKey?: string;
 }
 
 interface AIClients {
 	openai: OpenAI | null;
 	anthropic: Anthropic | null;
-	openrouter: OpenAI | null;
+	gemini: OpenAI | null;
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+const GEMINI_BASE_URL =
+	"https://generativelanguage.googleapis.com/v1beta/openai";
 
 const DEFAULT_TEMPERATURE = 0.3;
 const DEFAULT_MAX_TOKENS = 4096;
@@ -53,7 +54,7 @@ const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_MODELS: Record<AIProvider, string> = {
 	openai: "gpt-4o-mini",
 	anthropic: "claude-sonnet-4-20250514",
-	openrouter: "openai/gpt-4o-mini",
+	gemini: "gemini-2.0-flash",
 };
 
 // Pricing per 1M tokens (as of 2024)
@@ -71,11 +72,10 @@ const PRICING: Record<
 		"claude-3-5-sonnet-20241022": { input: 3, output: 15 },
 		"claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
 	},
-	openrouter: {
-		"openai/gpt-4o-mini": { input: 0.15, output: 0.6 },
-		"openai/gpt-4o": { input: 2.5, output: 10 },
-		"anthropic/claude-3-5-sonnet": { input: 3, output: 15 },
-		"anthropic/claude-3-haiku": { input: 0.25, output: 1.25 },
+	gemini: {
+		"gemini-2.0-flash": { input: 0.075, output: 0.3 },
+		"gemini-1.5-flash": { input: 0.075, output: 0.3 },
+		"gemini-1.5-pro": { input: 1.25, output: 5 },
 	},
 };
 
@@ -134,7 +134,7 @@ export const getAvailableProviders = (
 	const providers: AIProvider[] = [];
 	if (config.openaiApiKey) providers.push("openai");
 	if (config.anthropicApiKey) providers.push("anthropic");
-	if (config.openrouterApiKey) providers.push("openrouter");
+	if (config.geminiApiKey) providers.push("gemini");
 	return providers;
 };
 
@@ -150,10 +150,10 @@ const createClients = (config: AIProviderConfig): AIClients => ({
 	anthropic: config.anthropicApiKey
 		? new Anthropic({ apiKey: config.anthropicApiKey })
 		: null,
-	openrouter: config.openrouterApiKey
+	gemini: config.geminiApiKey
 		? new OpenAI({
-				apiKey: config.openrouterApiKey,
-				baseURL: OPENROUTER_BASE_URL,
+				apiKey: config.geminiApiKey,
+				baseURL: GEMINI_BASE_URL,
 			})
 		: null,
 });
@@ -188,13 +188,13 @@ const chatWithOpenAI = async (
 	);
 };
 
-const chatWithOpenRouter = async (
+const chatWithGemini = async (
 	client: OpenAI,
 	messages: AIMessage[],
 	options: ChatOptions,
 	startTime: number,
 ): Promise<AIResponse> => {
-	const model = options.model ?? DEFAULT_MODELS.openrouter;
+	const model = options.model ?? DEFAULT_MODELS.gemini;
 
 	const response = await client.chat.completions.create({
 		model,
@@ -209,7 +209,7 @@ const chatWithOpenRouter = async (
 		response.usage?.prompt_tokens ?? 0,
 		response.usage?.completion_tokens ?? 0,
 		model,
-		"openrouter",
+		"gemini",
 		startTime,
 	);
 };
@@ -262,15 +262,9 @@ const chat = async (
 			if (!clients.openai) throw new Error("OpenAI API key not configured");
 			return chatWithOpenAI(clients.openai, messages, options, startTime);
 		}
-		case "openrouter": {
-			if (!clients.openrouter)
-				throw new Error("OpenRouter API key not configured");
-			return chatWithOpenRouter(
-				clients.openrouter,
-				messages,
-				options,
-				startTime,
-			);
+		case "gemini": {
+			if (!clients.gemini) throw new Error("Gemini API key not configured");
+			return chatWithGemini(clients.gemini, messages, options, startTime);
 		}
 		case "anthropic": {
 			if (!clients.anthropic)
@@ -322,7 +316,7 @@ export const getAIProvider = (): AIProviderInstance => {
 		cachedInstance = createAIProvider({
 			openaiApiKey: process.env.OPENAI_API_KEY,
 			anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-			openrouterApiKey: process.env.OPENROUTER_API_KEY,
+			geminiApiKey: process.env.GEMINI_API_KEY,
 		});
 	}
 	return cachedInstance;
@@ -332,12 +326,12 @@ export const getAIProvider = (): AIProviderInstance => {
 export const initAIProvider = (
 	openaiKey?: string,
 	anthropicKey?: string,
-	openrouterKey?: string,
+	geminiKey?: string,
 ): AIProviderInstance => {
 	cachedInstance = createAIProvider({
 		openaiApiKey: openaiKey,
 		anthropicApiKey: anthropicKey,
-		openrouterApiKey: openrouterKey,
+		geminiApiKey: geminiKey,
 	});
 	return cachedInstance;
 };

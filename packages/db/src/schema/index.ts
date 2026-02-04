@@ -38,7 +38,7 @@ export const rankings = pgTable("rankings", {
 // AI Call Logs - Track costs and usage
 export const aiCallLogs = pgTable("ai_call_logs", {
 	id: uuid("id").primaryKey().defaultRandom(),
-	provider: text("provider").notNull(), // 'openai' | 'anthropic' | 'openrouter'
+	provider: text("provider").notNull(), // 'openai' | 'anthropic' | 'gemini'
 	model: text("model").notNull(),
 	inputTokens: integer("input_tokens").notNull(),
 	outputTokens: integer("output_tokens").notNull(),
