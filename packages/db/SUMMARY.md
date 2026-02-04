@@ -2,7 +2,7 @@
 
 **Intent:** Database schema, Drizzle client, and seed utilities. Canonical place for data model and CSV lead format.
 
-**Scope:** Drizzle ORM + node-postgres. Schema in `src/schema/`, client in `src/index.ts`, seed script in `src/seed.ts`, shared CSV/seed helpers in `src/seed-utils.ts`. Uses `@throxy-interview/env/server` for `DATABASE_URL`.
+**Scope:** Drizzle ORM + node-postgres (cached `pg.Pool` for serverless). Schema in `src/schema/`, client in `src/index.ts`, seed script in `src/seed.ts`, shared CSV/seed helpers in `src/seed-utils.ts`. Uses `@throxy-interview/env/server` for `DATABASE_URL`.
 
 **Contracts (canonical):**
 
@@ -12,4 +12,4 @@
 
 **Downlinks:** None (schema, seed, and seed-utils are one cohesive layer).
 
-**Summary:** Db package defines the Postgres schema (leads, rankings, aiCallLogs, prompts), exports the Drizzle client and types, and provides CSV parsing and default prompt for seeding. API and server depend on it for all DB access.
+**Summary:** Db package defines the Postgres schema (leads, rankings, aiCallLogs, prompts), exports the Drizzle client and types, and provides CSV parsing and default prompt for seeding. The client reuses a pooled connection across invocations to avoid serverless connection churn.

@@ -33,26 +33,26 @@ Open [http://localhost:3001](http://localhost:3001) to use the application.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js)                       │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Leads Table │  │ Ranking UI   │  │                    │  │
-│  │ (TanStack)  │  │ (Progress)   │  │                    │  │
-│  └─────────────┘  └──────────────┘  └───────────────────┘  │
+│                     Frontend (Next.js)                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐   │
+│  │ Leads Table │  │ Ranking UI   │  │                   │   │
+│  │ (TanStack)  │  │ (Progress)   │  │                   │   │
+│  └─────────────┘  └──────────────┘  └───────────────────┘   │
 └────────────────────────────┬────────────────────────────────┘
                              │ tRPC
-┌────────────────────────────▼────────────────────────────────┐
-│                     Backend (Hono)                           │
+┌────────────────────────────▼───────────────────────────────┐
+│                     Backend (Hono)                         │
 │  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
 │  │ Leads API   │  │ Ranking API  │  │                   │  │
 │  └─────────────┘  └──────────────┘  └───────────────────┘  │
-│  ┌─────────────────────────────────────────────────────────┐│
-│  │              AI Provider Factory                         ││
-│  │    (OpenAI / Anthropic with cost tracking)              ││
-│  └─────────────────────────────────────────────────────────┘│
-└────────────────────────────┬────────────────────────────────┘
+│  ┌────────────────────────────────────────────────────────┐│
+│  │              AI Provider Factory                       ││
+│  │    (OpenAI / Anthropic with cost tracking)             ││
+│  └────────────────────────────────────────────────────────┘│
+└────────────────────────────┬───────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────────┐
-│                  PostgreSQL (Supabase)                       │
+│                  PostgreSQL (Supabase)                      │
 │    leads │ rankings │ ai_call_logs │ prompts                │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -153,6 +153,8 @@ AI_PROVIDER=openai   # Default provider: openai | anthropic | gemini
 - Environment variables in Vercel:
   - `NEXT_PUBLIC_SERVER_URL` = your Vercel deployment URL (same origin)
   - `DATABASE_URL` = production Postgres connection string
+  - Supabase on Vercel: use the pooler URL (Transaction pooler) and include `sslmode=require`
+    - Example: `postgresql://postgres:<password>@<project>.pooler.supabase.com:6543/postgres?sslmode=require`
   - `CORS_ORIGIN` = same origin as `NEXT_PUBLIC_SERVER_URL`
   - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (at least one)
   - `AI_PROVIDER` (optional; default `openai`)

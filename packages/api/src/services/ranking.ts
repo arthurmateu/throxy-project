@@ -477,6 +477,22 @@ const RANK_SECONDARY_SORT = sql`COALESCE(${rankings.rank}, 999) ASC`;
 
 const MAX_LEADS_FOR_TOP_N = 5000;
 
+const logDbError = (
+	label: string,
+	error: unknown,
+	context: Record<string, unknown>,
+) => {
+	const err = error instanceof Error ? error : new Error(String(error));
+	const pgError = error as { code?: string; detail?: string; hint?: string };
+	console.error(label, {
+		message: err.message,
+		code: pgError?.code,
+		detail: pgError?.detail,
+		hint: pgError?.hint,
+		context,
+	});
+};
+
 /** Filter to top N leads per company by rank (asc = best first), then sort and paginate in memory */
 function filterTopPerCompanyAndPaginate<
 	T extends { accountName: string; rank: number | null },
@@ -538,71 +554,106 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 		...options,
 	};
 
-	const relevantFilter = showIrrelevant
-		? undefined
-		: sql`${rankings.rank} IS NOT NULL`;
+	try {
+		const relevantFilter = showIrrelevant
+			? undefined
+			: sql`${rankings.rank} IS NOT NULL`;
 
-	const baseSelect = {
-		id: leads.id,
-		firstName: leads.firstName,
-		lastName: leads.lastName,
-		jobTitle: leads.jobTitle,
-		accountName: leads.accountName,
-		accountDomain: leads.accountDomain,
-		employeeRange: leads.employeeRange,
-		industry: leads.industry,
-		rank: rankings.rank,
-		reasoning: rankings.reasoning,
-		relevanceScore: rankings.relevanceScore,
-	};
+		const baseSelect = {
+			id: leads.id,
+			firstName: leads.firstName,
+			lastName: leads.lastName,
+			jobTitle: leads.jobTitle,
+			accountName: leads.accountName,
+			accountDomain: leads.accountDomain,
+			employeeRange: leads.employeeRange,
+			industry: leads.industry,
+			rank: rankings.rank,
+			reasoning: rankings.reasoning,
+			relevanceScore: rankings.relevanceScore,
+		};
 
-	let query = db
-		.select(baseSelect)
-		.from(leads)
-		.leftJoin(rankings, eq(leads.id, rankings.leadId));
+		let query = db
+			.select(baseSelect)
+			.from(leads)
+			.leftJoin(rankings, eq(leads.id, rankings.leadId));
 
-	if (!showIrrelevant && relevantFilter) {
-		query = query.where(and(relevantFilter)) as typeof query;
-	}
+		if (!showIrrelevant && relevantFilter) {
+			query = query.where(and(relevantFilter)) as typeof query;
+		}
 
-	if (topPerCompany != null && topPerCompany > 0) {
-		// Fetch all (up to limit), filter to top N per company in memory, then paginate
-		const allRows = await query
-			.orderBy(buildSortOrder("rank", "asc"), RANK_SECONDARY_SORT)
-			.limit(MAX_LEADS_FOR_TOP_N);
-		const { rows, totalCount } = filterTopPerCompanyAndPaginate(
-			allRows,
-			topPerCompany,
-			sortBy,
-			sortOrder,
-			page,
-			pageSize,
-		);
+		if (topPerCompany != null && topPerCompany > 0) {
+			// Fetch all (up to limit), filter to top N per company in memory, then paginate
+			const allRows = await query
+				.orderBy(buildSortOrder("rank", "asc"), RANK_SECONDARY_SORT)
+				.limit(MAX_LEADS_FOR_TOP_N);
+			const { rows, totalCount } = filterTopPerCompanyAndPaginate(
+				allRows,
+				topPerCompany,
+				sortBy,
+				sortOrder,
+				page,
+				pageSize,
+			);
+			return {
+				leads: rows,
+				pagination: calculatePagination(page, pageSize, totalCount),
+			};
+		}
+
+		const offset = (page - 1) * pageSize;
+
+		let countResult: { count: number }[];
+		try {
+			countResult = await db
+				.select({ count: sql<number>`count(*)` })
+				.from(leads)
+				.leftJoin(rankings, eq(leads.id, rankings.leadId))
+				.where(relevantFilter ?? sql`true`);
+		} catch (error) {
+			logDbError("Leads count query failed", error, {
+				page,
+				pageSize,
+				sortBy,
+				sortOrder,
+				showIrrelevant,
+				topPerCompany,
+			});
+			throw error;
+		}
+
+		const totalCount = Number(countResult[0]?.count ?? 0);
+
+		let results: (typeof baseSelect)[];
+		try {
+			results = await query
+				.orderBy(buildSortOrder(sortBy, sortOrder), RANK_SECONDARY_SORT)
+				.limit(pageSize)
+				.offset(offset);
+		} catch (error) {
+			logDbError("Leads list query failed", error, {
+				page,
+				pageSize,
+				sortBy,
+				sortOrder,
+				showIrrelevant,
+				topPerCompany,
+			});
+			throw error;
+		}
+
 		return {
-			leads: rows,
+			leads: results,
 			pagination: calculatePagination(page, pageSize, totalCount),
 		};
+	} catch (error) {
+		const err = error instanceof Error ? error : new Error(String(error));
+		console.error("Leads query failed", {
+			error: err,
+			options,
+		});
+		throw new Error("Failed to load leads", { cause: err });
 	}
-
-	const offset = (page - 1) * pageSize;
-
-	const countResult = await db
-		.select({ count: sql<number>`count(*)` })
-		.from(leads)
-		.leftJoin(rankings, eq(leads.id, rankings.leadId))
-		.where(relevantFilter ?? sql`true`);
-
-	const totalCount = Number(countResult[0]?.count ?? 0);
-
-	const results = await query
-		.orderBy(buildSortOrder(sortBy, sortOrder), RANK_SECONDARY_SORT)
-		.limit(pageSize)
-		.offset(offset);
-
-	return {
-		leads: results,
-		pagination: calculatePagination(page, pageSize, totalCount),
-	};
 };
 
 /** Get ranking statistics */
