@@ -45,6 +45,20 @@ interface LeadsQueryOptions {
 	topPerCompany?: number;
 }
 
+type LeadWithRanking = {
+	id: string;
+	firstName: string;
+	lastName: string;
+	jobTitle: string;
+	accountName: string;
+	accountDomain: string | null;
+	employeeRange: string | null;
+	industry: string | null;
+	rank: number | null;
+	reasoning: string | null;
+	relevanceScore: number | null;
+};
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -624,7 +638,7 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 
 		const totalCount = Number(countResult[0]?.count ?? 0);
 
-		let results: (typeof baseSelect)[];
+		let results: LeadWithRanking[];
 		try {
 			results = await query
 				.orderBy(buildSortOrder(sortBy, sortOrder), RANK_SECONDARY_SORT)

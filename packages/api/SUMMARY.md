@@ -17,4 +17,4 @@
 | Services: AI provider | `src/services/ai-provider.ts` | Multi-provider chat, pricing, `getAIProvider` / `initAIProvider` |
 | Services: Ranking | `src/services/ranking.ts` | Ranking process, prompt building, progress, DB writes for rankings/aiCallLogs |
 
-**Summary:** API package is the tRPC backend: leads CRUD and import, AI ranking (per-company batches, progress polling), export (top N per company). Services encapsulate AI calls and ranking pipeline, and leads queries log underlying DB failures before returning a user-facing error.
+**Summary:** API package is the tRPC backend: leads CRUD and import, AI ranking (per-company batches, progress polling), export (top N per company). Services encapsulate AI calls and ranking pipeline, and leads queries return value-typed rows while logging underlying DB failures before returning a user-facing error.
