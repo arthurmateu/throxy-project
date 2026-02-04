@@ -58,7 +58,7 @@ export function ExportButton() {
 				topPerCompany: view.topPerCompany,
 			};
 			const result = await fetch(
-				`${env.NEXT_PUBLIC_SERVER_URL}/trpc/export.currentView?input=${encodeURIComponent(
+				`${env.NEXT_PUBLIC_SERVER_URL}/api/trpc/export.currentView?input=${encodeURIComponent(
 					JSON.stringify(input),
 				)}`,
 			);
