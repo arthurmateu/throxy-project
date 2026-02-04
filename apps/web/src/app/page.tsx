@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DataImport } from "@/components/data-import";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "@/components/leads-table";
+import { LeadsViewProvider } from "@/components/leads-view-context";
 import { RankingControls } from "@/components/ranking-controls";
 import { StatsCards } from "@/components/stats-card";
 import { useTRPC } from "@/utils/trpc";
@@ -49,13 +50,15 @@ export default function Home() {
 				<RankingControls />
 
 				{/* Leads Table */}
-				<div className="space-y-4">
-					<div className="flex items-center justify-between">
-						<h2 className="font-semibold text-xl">Leads</h2>
-						<ExportButton />
+				<LeadsViewProvider>
+					<div className="space-y-4">
+						<div className="flex items-center justify-between">
+							<h2 className="font-semibold text-xl">Leads</h2>
+							<ExportButton />
+						</div>
+						<LeadsTable />
 					</div>
-					<LeadsTable />
-				</div>
+				</LeadsViewProvider>
 			</div>
 		</div>
 	);

@@ -3,10 +3,44 @@ import * as schema from "@throxy-interview/db/schema";
 import { asc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { publicProcedure, router } from "../index";
+import { getLeadsWithRankings } from "../services/ranking";
 
 const { leads, rankings } = schema;
 
+const LIST_OPTIONS_SCHEMA = z
+	.object({
+		sortBy: z.enum(["rank", "name", "company"]).default("rank"),
+		sortOrder: z.enum(["asc", "desc"]).default("asc"),
+		showIrrelevant: z.boolean().default(true),
+		topPerCompany: z.number().min(1).max(50).optional(),
+	})
+	.optional();
+
+/** Export the same leads as the UI list (current view: filters + sort), up to 10k rows */
 export const exportRouter = router({
+	currentView: publicProcedure
+		.input(LIST_OPTIONS_SCHEMA)
+		.query(async ({ input }) => {
+			const opts = input ?? {};
+			const { leads: rows } = await getLeadsWithRankings({
+				...opts,
+				page: 1,
+				pageSize: 10_000,
+			});
+			const data = rows.map((lead) => ({
+				company: lead.accountName,
+				firstName: lead.firstName,
+				lastName: lead.lastName,
+				jobTitle: lead.jobTitle,
+				rank: lead.rank ?? "",
+				reasoning: lead.reasoning ?? "",
+				employeeRange: lead.employeeRange ?? "",
+				industry: lead.industry ?? "",
+				domain: lead.accountDomain ?? "",
+			}));
+			return { data, totalLeads: data.length } as const;
+		}),
+
 	topLeadsPerCompany: publicProcedure
 		.input(
 			z

@@ -18,7 +18,8 @@ import {
 	ChevronsLeft,
 	ChevronsRight,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useLeadsView } from "@/components/leads-view-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,35 +56,49 @@ function getRankBadgeVariant(
 	return "destructive";
 }
 
+function sortByToColumnId(sortBy: "rank" | "name" | "company") {
+	return sortBy === "company"
+		? "accountName"
+		: sortBy === "name"
+			? "lastName"
+			: "rank";
+}
+
 export function LeadsTable() {
 	const trpc = useTRPC();
-	const [sorting, setSorting] = useState<SortingState>([
-		{ id: "rank", desc: false },
-	]);
-	const [showIrrelevant, setShowIrrelevant] = useState(true);
-	const [topPerCompany, setTopPerCompany] = useState<number | undefined>(
-		undefined,
-	);
+	const { view, setView } = useLeadsView();
 	const [page, setPage] = useState(1);
 	const pageSize = 25;
 
-	// Determine sort parameters from TanStack Table state
-	const sortBy =
-		sorting[0]?.id === "accountName"
-			? "company"
-			: sorting[0]?.id === "lastName"
-				? "name"
-				: "rank";
-	const sortOrder = sorting[0]?.desc ? "desc" : "asc";
+	const sorting: SortingState = useMemo(
+		() => [
+			{ id: sortByToColumnId(view.sortBy), desc: view.sortOrder === "desc" },
+		],
+		[view.sortBy, view.sortOrder],
+	);
+	const handleSortingChange = useCallback(
+		(updater: React.SetStateAction<SortingState>) => {
+			if (typeof updater !== "function") return;
+			const next = updater([
+				{ id: sortByToColumnId(view.sortBy), desc: view.sortOrder === "desc" },
+			]);
+			const id = next[0]?.id ?? "rank";
+			const sortBy =
+				id === "accountName" ? "company" : id === "lastName" ? "name" : "rank";
+			const sortOrder = next[0]?.desc ? "desc" : "asc";
+			setView({ sortBy, sortOrder });
+		},
+		[view.sortBy, view.sortOrder, setView],
+	);
 
 	const { data, isLoading, error } = useQuery(
 		trpc.leads.list.queryOptions({
 			page,
 			pageSize,
-			sortBy: sortBy as "rank" | "name" | "company",
-			sortOrder: sortOrder as "asc" | "desc",
-			showIrrelevant,
-			topPerCompany,
+			sortBy: view.sortBy,
+			sortOrder: view.sortOrder,
+			showIrrelevant: view.showIrrelevant,
+			topPerCompany: view.topPerCompany,
 		}),
 	);
 
@@ -94,10 +109,7 @@ export function LeadsTable() {
 				header: ({ column }) => {
 					// Rank is sorted by default (asc). When sorted by rank show direction; otherwise show default (asc) so the icon doesn't change when sorting by other columns.
 					const isRankSorted = sorting[0]?.id === "rank";
-					const rankDir =
-						isRankSorted && sorting[0]?.desc
-							? "desc"
-							: "asc"; // asc when sorted by rank or when another column is sorted (rank's default)
+					const rankDir = isRankSorted && sorting[0]?.desc ? "desc" : "asc"; // asc when sorted by rank or when another column is sorted (rank's default)
 					return (
 						<Button
 							variant="ghost"
@@ -211,7 +223,7 @@ export function LeadsTable() {
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		onSortingChange: (updater) => {
-			setSorting(updater);
+			handleSortingChange(updater);
 			setPage(1); // Reset to first page on sort change
 		},
 		state: {
@@ -237,9 +249,9 @@ export function LeadsTable() {
 					<label className="flex items-center space-x-2 text-sm">
 						<input
 							type="checkbox"
-							checked={showIrrelevant}
+							checked={view.showIrrelevant}
 							onChange={(e) => {
-								setShowIrrelevant(e.target.checked);
+								setView({ showIrrelevant: e.target.checked });
 								setPage(1);
 							}}
 							className="h-4 w-4 rounded border-gray-300"
@@ -252,13 +264,14 @@ export function LeadsTable() {
 							type="number"
 							min={1}
 							placeholder="All"
-							value={topPerCompany ?? ""}
+							value={view.topPerCompany ?? ""}
 							onChange={(e) => {
 								const v = e.target.value.trim();
 								const n = v === "" ? undefined : Number.parseInt(v, 10);
-								setTopPerCompany(
-									n === undefined || Number.isNaN(n) || n < 1 ? undefined : n,
-								);
+								setView({
+									topPerCompany:
+										n === undefined || Number.isNaN(n) || n < 1 ? undefined : n,
+								});
 								setPage(1);
 							}}
 							className="w-20 rounded border border-input bg-background px-2 py-1 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
