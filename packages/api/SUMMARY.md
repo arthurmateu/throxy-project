@@ -6,8 +6,8 @@
 
 **Contracts (canonical):**
 
-- **Router surface:** `appRouter` from `src/routers/index.ts`; type `AppRouter` for client. Procedures: `healthCheck`, `leads.list` / `leads.stats` / `leads.importFromCsv` / `leads.runTestData` / `leads.clearAll`, `ranking.start` / `ranking.progress` / `ranking.availableProviders`, `optimizer.start` / `optimizer.startSession` / `optimizer.progress` / `optimizer.history` / `optimizer.activate` / `optimizer.evalSetInfo`, `export.topLeadsPerCompany`.
-- **AI providers:** openai, anthropic, gemini. Config from env; init via `initAIProvider` in routers that need AI. Ranking and optimization run as background processes keyed by `batchId`/`runId`; progress stored in-memory (Map). Session optimization can override the ranking prompt in-memory and session-scoped AI stats are derived from session batch IDs.
+- **Router surface:** `appRouter` from `src/routers/index.ts`; type `AppRouter` for client. Procedures: `healthCheck`, `leads.list` / `leads.stats` / `leads.importFromCsv` / `leads.runTestData` / `leads.clearAll`, `ranking.start` / `ranking.progress` / `ranking.changes` / `ranking.availableProviders`, `optimizer.start` / `optimizer.startSession` / `optimizer.progress` / `optimizer.history` / `optimizer.activate` / `optimizer.evalSetInfo`, `export.topLeadsPerCompany`.
+- **AI providers:** openai, anthropic, gemini. Config from env; init via `initAIProvider` in routers that need AI. Ranking and optimization run as background processes keyed by `batchId`/`runId`; progress stored in-memory (Map). Session optimization can override the ranking prompt in-memory, capture ranking deltas after rerank, and session-scoped AI stats are derived from session batch IDs.
 - **Prompt fallback:** Ranking auto-creates the default prompt if no active prompt exists, so first-run ranking can proceed without manual seeding.
 - **DB bootstrap:** API context calls `ensureDbSchema()` so tables exist before handling requests.
 

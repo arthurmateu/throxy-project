@@ -133,3 +133,60 @@ describe("parseRankingResponse", () => {
 		expect(results.filter((r) => r.leadId === "lead-1")).toHaveLength(1);
 	});
 });
+
+describe("buildRankingChanges", () => {
+	test("returns only leads with rank changes", async () => {
+		setupMockDb([]);
+		const { buildRankingChanges } = await import("./ranking");
+
+		const oldRanks = new Map<string, number | null>([
+			["lead-1", 1],
+			["lead-2", null],
+		]);
+		const companyLeads = [
+			{
+				id: "lead-1",
+				firstName: "Ava",
+				lastName: "Stone",
+				jobTitle: "VP Sales",
+				accountName: "Acme",
+				employeeRange: "100-500",
+				industry: "Tech",
+			},
+			{
+				id: "lead-2",
+				firstName: "Ben",
+				lastName: "King",
+				jobTitle: "HR Manager",
+				accountName: "Acme",
+				employeeRange: "100-500",
+				industry: "Tech",
+			},
+			{
+				id: "lead-3",
+				firstName: "Cara",
+				lastName: "Lopez",
+				jobTitle: "Sales Director",
+				accountName: "Acme",
+				employeeRange: "100-500",
+				industry: "Tech",
+			},
+		];
+		const results = [
+			{ leadId: "lead-1", rank: 2, reasoning: "Moved down" },
+			{ leadId: "lead-2", rank: null, reasoning: "Still irrelevant" },
+			{ leadId: "lead-3", rank: 1, reasoning: "Newly ranked" },
+		];
+
+		const changes = buildRankingChanges(oldRanks, companyLeads, results);
+
+		expect(changes).toHaveLength(2);
+		expect(changes[0]?.leadId).toBe("lead-1");
+		expect(changes[0]?.oldRank).toBe(1);
+		expect(changes[0]?.newRank).toBe(2);
+		expect(changes[0]?.fullName).toBe("Ava Stone");
+		expect(changes[1]?.leadId).toBe("lead-3");
+		expect(changes[1]?.oldRank).toBe(null);
+		expect(changes[1]?.newRank).toBe(1);
+	});
+});

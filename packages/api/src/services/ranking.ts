@@ -6,7 +6,10 @@ import { type AIProvider, type AIResponse, getAIProvider } from "./ai-provider";
 import {
 	getSessionAiBatchIds,
 	getSessionOptimizedPrompt,
+	hasPendingOptimization,
+	type RankingChange,
 	registerSessionAiBatchId,
+	setSessionRankingChanges,
 } from "./session-store";
 
 const { leads, rankings, aiCallLogs, prompts } = schema;
@@ -65,6 +68,8 @@ type LeadWithRanking = {
 	relevanceScore: number | null;
 };
 
+type RankMap = Map<string, number | null>;
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -85,6 +90,9 @@ const DEFAULT_QUERY_OPTIONS: Required<LeadsQueryOptions> = {
 	topPerCompany: 0,
 };
 
+const normalizeRank = (rank: number | null | undefined): number | null =>
+	typeof rank === "number" ? rank : null;
+
 // ============================================================================
 // Progress State Management (Functional Approach)
 // ============================================================================
@@ -104,6 +112,34 @@ const updateProgress = (
 	const updated = { ...current, ...update };
 	progressMap.set(batchId, updated);
 	return updated;
+};
+
+// ============================================================================
+// Pure Functions - Change Detection
+// ============================================================================
+
+export const buildRankingChanges = (
+	oldRanks: RankMap,
+	companyLeads: LeadForRanking[],
+	results: RankingResult[],
+): RankingChange[] => {
+	const leadById = new Map(companyLeads.map((lead) => [lead.id, lead]));
+	return results.flatMap((result) => {
+		const lead = leadById.get(result.leadId);
+		if (!lead) return [];
+		const previousRank = normalizeRank(oldRanks.get(result.leadId));
+		const nextRank = normalizeRank(result.rank);
+		if (previousRank === nextRank) return [];
+		return [
+			{
+				leadId: result.leadId,
+				fullName: `${lead.firstName} ${lead.lastName}`,
+				company: lead.accountName,
+				oldRank: previousRank,
+				newRank: nextRank,
+			},
+		];
+	});
 };
 
 // ============================================================================
@@ -387,6 +423,30 @@ const fetchAllLeads = async (): Promise<LeadForRanking[]> =>
 		})
 		.from(leads);
 
+const fetchLatestRanksByLeadId = async (): Promise<RankMap> => {
+	const latestRankings = db
+		.select({
+			leadId: rankings.leadId,
+			createdAt: sql`max(${rankings.createdAt})`.as("createdAt"),
+		})
+		.from(rankings)
+		.groupBy(rankings.leadId)
+		.as("latest_rankings");
+
+	const rows = await db
+		.select({ leadId: rankings.leadId, rank: rankings.rank })
+		.from(rankings)
+		.innerJoin(
+			latestRankings,
+			and(
+				eq(rankings.leadId, latestRankings.leadId),
+				eq(rankings.createdAt, latestRankings.createdAt),
+			),
+		);
+
+	return new Map(rows.map((row) => [row.leadId, row.rank]));
+};
+
 /** Save rankings to database */
 const saveRankings = async (rankingsToInsert: NewRanking[]): Promise<void> => {
 	await db.insert(rankings).values(rankingsToInsert);
@@ -452,7 +512,7 @@ const processCompany = async (
 	provider: AIProvider,
 	batchId: string,
 	promptVersion: number,
-): Promise<number> => {
+): Promise<{ processed: number; results: RankingResult[] }> => {
 	try {
 		const { results } = await rankLeadsBatch(
 			companyLeads,
@@ -465,10 +525,10 @@ const processCompany = async (
 			toRankingEntry(r, promptVersion),
 		);
 		await saveRankings(rankingsToInsert);
-		return companyLeads.length;
+		return { processed: companyLeads.length, results };
 	} catch (error) {
 		console.error(`Error ranking company ${companyName}:`, error);
-		return companyLeads.length; // Continue with next company
+		return { processed: companyLeads.length, results: [] }; // Continue with next company
 	}
 };
 
@@ -482,6 +542,11 @@ export const runRankingProcess = async (
 		const allLeads = await fetchAllLeads();
 		const companiesMap = groupLeadsByCompany(allLeads);
 		const companies = Array.from(companiesMap.entries());
+		const shouldCaptureChanges = hasPendingOptimization(sessionId);
+		const previousRanks = shouldCaptureChanges
+			? await fetchLatestRanksByLeadId()
+			: new Map();
+		const rankingChanges: RankingChange[] = [];
 
 		updateProgress(batchId, {
 			total: allLeads.length,
@@ -504,7 +569,7 @@ export const runRankingProcess = async (
 		for (const [companyName, companyLeads] of companies) {
 			updateProgress(batchId, { currentCompany: companyName });
 
-			const processed = await processCompany(
+			const { processed, results } = await processCompany(
 				companyName,
 				companyLeads,
 				systemPrompt,
@@ -513,11 +578,21 @@ export const runRankingProcess = async (
 				promptVersion,
 			);
 
+			if (shouldCaptureChanges && results.length > 0) {
+				rankingChanges.push(
+					...buildRankingChanges(previousRanks, companyLeads, results),
+				);
+			}
+
 			completedLeads += processed;
 			updateProgress(batchId, { completed: completedLeads });
 		}
 
 		updateProgress(batchId, { status: "completed", currentCompany: null });
+
+		if (shouldCaptureChanges) {
+			setSessionRankingChanges(sessionId, rankingChanges);
+		}
 	} catch (error) {
 		updateProgress(batchId, {
 			status: "error",

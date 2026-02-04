@@ -7,7 +7,7 @@
 **Contracts (canonical):**
 
 - **tRPC client:** `createTRPCClient` + `createTRPCOptionsProxy` from `@trpc/client` / `@trpc/tanstack-react-query`; `httpBatchLink` to `${env.NEXT_PUBLIC_SERVER_URL}/api/trpc`. Use `useTRPC()` in client components for type-safe procedures.
-- **Data flow:** Page composes StatsCards (session-scoped AI cost/tokens), DataImport (CSV import), AiOptimization (session eval CSV upload), RankingControls (start ranking, progress, provider), LeadsTable (paginated/sortable list), ExportButton (top N per company CSV download). All data via tRPC queries/mutations; React Query handles cache and invalidation.
+- **Data flow:** Page composes StatsCards (session-scoped AI cost/tokens), DataImport (CSV import), AiOptimization (session eval CSV upload that auto-re-ranks on completion), RankingControls (start ranking, progress, provider), LeadsTable (paginated/sortable list with post-optimization ranking-change banner), ExportButton (top N per company CSV download). All data via tRPC queries/mutations; React Query handles cache and invalidation.
 
 **Downlinks:**
 
@@ -18,4 +18,4 @@
 | UI primitives | `src/components/ui/` | Buttons, cards, table, dropdown, etc. |
 | tRPC/React Query | `src/utils/trpc.ts` | Client setup, base URL, useTRPC |
 
-**Summary:** Web app is a single dashboard page backed by tRPC: session-scoped stats, lead import, session AI optimization, AI ranking with progress (shown alongside Data import), sortable/paginated leads table, and CSV export. Header includes Home plus a Clear action for wiping data; all API calls go through the tRPC client.
+**Summary:** Web app is a single dashboard page backed by tRPC: session-scoped stats, lead import, session AI optimization that auto re-ranks, AI ranking with progress (shown alongside Data import), sortable/paginated leads table with a ranking-change banner after optimization, and CSV export. Header includes Home plus a Clear action for wiping data; all API calls go through the tRPC client.

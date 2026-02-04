@@ -6,7 +6,9 @@ const setupMockDb = () => {
 		deleted.push(table);
 	};
 	const db = {
-		transaction: async (callback: (tx: { delete: typeof deleteFn }) => void) => {
+		transaction: async (
+			callback: (tx: { delete: typeof deleteFn }) => void,
+		) => {
 			await callback({ delete: deleteFn });
 		},
 	};
@@ -29,11 +31,6 @@ describe("clearAllData", () => {
 
 		await clearAllData();
 
-		expect(deleted).toEqual([
-			"aiCallLogs",
-			"rankings",
-			"leads",
-			"prompts",
-		]);
+		expect(deleted).toEqual(["aiCallLogs", "rankings", "leads", "prompts"]);
 	});
 });

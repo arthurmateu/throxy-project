@@ -54,9 +54,7 @@ export function DataImport() {
 		<Card>
 			<CardHeader>
 				<CardTitle>Data</CardTitle>
-				<CardDescription>
-					Import your own CSV.
-				</CardDescription>
+				<CardDescription>Import your own CSV.</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-wrap items-center gap-3">
 				<input

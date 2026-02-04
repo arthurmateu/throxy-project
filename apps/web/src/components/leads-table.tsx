@@ -17,6 +17,7 @@ import {
 	ChevronRight,
 	ChevronsLeft,
 	ChevronsRight,
+	X,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useLeadsView } from "@/components/leads-view-context";
@@ -31,6 +32,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { getSessionId } from "@/utils/session";
 import { useTRPC } from "@/utils/trpc";
 
 interface Lead {
@@ -45,6 +47,14 @@ interface Lead {
 	rank: number | null;
 	reasoning: string | null;
 	relevanceScore: number | null;
+}
+
+interface RankingChange {
+	leadId: string;
+	fullName: string;
+	company: string;
+	oldRank: number | null;
+	newRank: number | null;
 }
 
 function getRankBadgeVariant(
@@ -64,11 +74,18 @@ function sortByToColumnId(sortBy: "rank" | "name" | "company") {
 			: "rank";
 }
 
+function formatRank(rank: number | null) {
+	return rank === null ? "Unranked" : rank;
+}
+
 export function LeadsTable() {
 	const trpc = useTRPC();
 	const { view, setView } = useLeadsView();
 	const [page, setPage] = useState(1);
+	const [isExpanded, setIsExpanded] = useState(false);
+	const [isDismissed, setIsDismissed] = useState(false);
 	const pageSize = 25;
+	const sessionId = getSessionId();
 
 	const sorting: SortingState = useMemo(
 		() => [
@@ -101,6 +118,12 @@ export function LeadsTable() {
 			topPerCompany: view.topPerCompany,
 		}),
 	);
+	const { data: rankingChanges } = useQuery(
+		trpc.ranking.changes.queryOptions({ sessionId }),
+	);
+	const changes = (rankingChanges?.changes ?? []) as RankingChange[];
+	const visibleChanges = isExpanded ? changes : changes.slice(0, 3);
+	const showBanner = changes.length > 0 && !isDismissed;
 
 	const columns: ColumnDef<Lead>[] = useMemo(
 		() => [
@@ -284,6 +307,48 @@ export function LeadsTable() {
 					{data?.pagination.totalCount ?? 0} total leads
 				</div>
 			</div>
+
+			{showBanner && (
+				<div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+					<div className="flex flex-wrap items-center justify-between gap-2">
+						<div className="font-medium">
+							AI optimization changed {changes.length} rankings
+						</div>
+						<div className="flex items-center gap-3">
+							{changes.length > 3 && (
+								<button
+									type="button"
+									className="text-primary text-sm underline underline-offset-4"
+									onClick={() => setIsExpanded((prev) => !prev)}
+								>
+									{isExpanded ? "Show fewer changes" : "See all changes"}
+								</button>
+							)}
+							<button
+								type="button"
+								className="rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+								aria-label="Dismiss optimization changes"
+								onClick={() => setIsDismissed(true)}
+							>
+								<X className="h-4 w-4" />
+							</button>
+						</div>
+					</div>
+					<div className="mt-2 space-y-1 text-muted-foreground text-sm">
+						{visibleChanges.map((change) => (
+							<div key={change.leadId} className="flex flex-wrap gap-2">
+								<span className="font-medium text-foreground">
+									{change.fullName}
+								</span>
+								<span>· {change.company}</span>
+								<span>
+									— {formatRank(change.oldRank)} → {formatRank(change.newRank)}
+								</span>
+							</div>
+						))}
+					</div>
+				</div>
+			)}
 
 			<div className="rounded-md border">
 				<Table>

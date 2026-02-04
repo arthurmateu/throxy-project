@@ -12,6 +12,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { publishRankingBatchId } from "@/utils/ranking-run";
 import { getSessionId } from "@/utils/session";
 import { useTRPC } from "@/utils/trpc";
 
@@ -25,10 +26,12 @@ export function AiOptimization() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [runId, setRunId] = useState<string | null>(null);
 	const [isPolling, setIsPolling] = useState(false);
+	const autoRankedRunId = useRef<string | null>(null);
 
 	const startOptimization = useMutation(
 		trpc.optimizer.startSession.mutationOptions(),
 	);
+	const startRanking = useMutation(trpc.ranking.start.mutationOptions());
 
 	const { data: progress } = useQuery({
 		...trpc.optimizer.progress.queryOptions({ runId: runId ?? "" }),
@@ -40,6 +43,27 @@ export function AiOptimization() {
 		if (progress?.status === "completed") {
 			setIsPolling(false);
 			queryClient.invalidateQueries({ queryKey: [["leads", "stats"]] });
+			if (runId && autoRankedRunId.current !== runId) {
+				autoRankedRunId.current = runId;
+				startRanking.mutate(
+					{ sessionId },
+					{
+						onSuccess: (data) => {
+							if (data?.batchId) {
+								publishRankingBatchId(data.batchId);
+								toast.info("Applying optimized prompt", {
+									description: "Re-running AI ranking with the new prompt.",
+								});
+							}
+						},
+						onError: (err) => {
+							toast.error("Failed to re-run ranking", {
+								description: err.message,
+							});
+						},
+					},
+				);
+			}
 			toast.success("Optimization complete", {
 				description: `Best fitness: ${progress.bestFitness.toFixed(3)}`,
 			});
@@ -49,7 +73,7 @@ export function AiOptimization() {
 				description: progress.error,
 			});
 		}
-	}, [progress, queryClient]);
+	}, [progress, queryClient, runId, sessionId, startRanking]);
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -63,6 +87,7 @@ export function AiOptimization() {
 					onSuccess: (data) => {
 						setRunId(data.runId);
 						setIsPolling(true);
+						autoRankedRunId.current = null;
 						toast.info("Optimization started", {
 							description: "Using session-only pre-ranked data.",
 						});

@@ -12,6 +12,11 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	getLatestRankingBatchId,
+	publishRankingBatchId,
+	subscribeRankingBatchId,
+} from "@/utils/ranking-run";
 import { getSessionId } from "@/utils/session";
 import { useTRPC } from "@/utils/trpc";
 
@@ -127,6 +132,18 @@ export function RankingControls() {
 	const [batchId, setBatchId] = useState<string | null>(null);
 	const [isPolling, setIsPolling] = useState(false);
 
+	useEffect(() => {
+		const existing = getLatestRankingBatchId();
+		if (existing) {
+			setBatchId(existing);
+			setIsPolling(true);
+		}
+		return subscribeRankingBatchId((nextBatchId) => {
+			setBatchId(nextBatchId);
+			setIsPolling(true);
+		});
+	}, []);
+
 	// Get available providers
 	const { data: providersData } = useQuery(
 		trpc.ranking.availableProviders.queryOptions(),
@@ -147,6 +164,7 @@ export function RankingControls() {
 			if (data) {
 				setBatchId(data.batchId);
 				setIsPolling(true);
+				publishRankingBatchId(data.batchId);
 				toast.info("Ranking process started", {
 					description:
 						"This may take a few minutes depending on the number of leads.",
@@ -166,6 +184,7 @@ export function RankingControls() {
 			setIsPolling(false);
 			queryClient.invalidateQueries({ queryKey: [["leads"]] });
 			queryClient.invalidateQueries({ queryKey: [["leads", "stats"]] });
+			queryClient.invalidateQueries({ queryKey: [["ranking", "changes"]] });
 			toast.success("Ranking complete!", {
 				description: `Ranked ${progress.completed} leads.`,
 			});

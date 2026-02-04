@@ -12,6 +12,7 @@ import {
 	type RankingProgress,
 	runRankingProcess,
 } from "../services/ranking";
+import { getSessionRankingChanges } from "../services/session-store";
 
 // ============================================================================
 // Shared Utilities
@@ -56,6 +57,10 @@ const progressInputSchema = z.object({
 	batchId: z.string(),
 });
 
+const changesInputSchema = z
+	.object({ sessionId: z.string().min(1).optional() })
+	.optional();
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -82,6 +87,10 @@ export const rankingRouter = router({
 			async ({ input }): Promise<RankingProgress> =>
 				getRankingProgress(input.batchId),
 		),
+
+	changes: publicProcedure.input(changesInputSchema).query(({ input }) => ({
+		changes: getSessionRankingChanges(input?.sessionId),
+	})),
 
 	availableProviders: publicProcedure.query(async () => ({
 		providers: getAvailableProviders(getProviderConfig()),
