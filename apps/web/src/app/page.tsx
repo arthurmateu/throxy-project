@@ -44,14 +44,14 @@ export default function Home() {
 				{/* Stats Cards */}
 				<StatsCards />
 
-				{/* Data: Import CSV / Run test data */}
-				<DataImport />
+				{/* Data + Ranking */}
+				<div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+					<DataImport />
+					<RankingControls />
+				</div>
 
 				{/* AI Optimization */}
 				<AiOptimization />
-
-				{/* Ranking Controls */}
-				<RankingControls />
 
 				{/* Leads Table */}
 				<LeadsViewProvider>

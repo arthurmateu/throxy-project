@@ -8,7 +8,6 @@
 
 - **Package names:** Use `name` from each package's `package.json`. Main: `web`, `server`, `@throxy-interview/api`, `@throxy-interview/db`, `@throxy-interview/env`, `@throxy-interview/config`.
 - **Running tasks:** `bunx turbo run <task> --filter <package_name>`; deps installed at root with `bun install`.
-- **Node version (local):** Use Node 20.x for dev; `nvm use` reads `.nvmrc` at repo root.
 - **Type/lint:** `bun run check-types` and `bun run check` at root.
 
 **Downlinks:**
@@ -22,4 +21,4 @@
 | Next.js frontend | [apps/web/SUMMARY.md](./apps/web/SUMMARY.md) | UI, pages, components |
 | Hono API server | [apps/server/SUMMARY.md](./apps/server/SUMMARY.md) | HTTP, CORS, tRPC mount |
 
-**Summary:** Apps: `web` (Next.js, Persona Ranker UI) and `server` (Hono, tRPC). Packages: `db` (Drizzle, leads/rankings/prompts/aiCallLogs), `api` (tRPC app router: leads, ranking, export), `env` (server + web validated env), `config` (shared tsconfig). Data flow: CSV → leads; active prompt + AI → rankings; export → top N per company; tRPC served at `/api/trpc/*` for Vercel.
+**Summary:** Apps: `web` (Next.js, Persona Ranker UI) and `server` (Hono, tRPC). Packages: `db` (Drizzle, leads/rankings/prompts/aiCallLogs), `api` (tRPC app router: leads, ranking, export), `env` (server + web validated env), `config` (shared tsconfig). Data flow: CSV → leads; active prompt + AI → rankings; export → top N per company.

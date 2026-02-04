@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileUp, Loader2, Sparkles } from "lucide-react";
+import { FileUp, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,6 @@ export function AiOptimization() {
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
 					AI Optimization
-					{isRunning && <Loader2 className="h-4 w-4 animate-spin" />}
 					{isRunning && progress && (
 						<span className="text-muted-foreground text-xs">
 							{progress.percentComplete}%
@@ -112,11 +111,7 @@ export function AiOptimization() {
 					onClick={() => fileInputRef.current?.click()}
 					disabled={startOptimization.isPending}
 				>
-					{startOptimization.isPending ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
-					) : (
-						<FileUp className="h-4 w-4" />
-					)}
+					<FileUp className="h-4 w-4" />
 					<span className="ml-2">Upload eval .csv</span>
 				</Button>
 

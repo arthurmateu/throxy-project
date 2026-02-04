@@ -222,6 +222,7 @@ export function LeadsTable() {
 		columns,
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
+		getRowId: (row) => row.id,
 		onSortingChange: (updater) => {
 			handleSortingChange(updater);
 			setPage(1); // Reset to first page on sort change

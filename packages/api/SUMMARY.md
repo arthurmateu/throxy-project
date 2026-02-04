@@ -6,7 +6,7 @@
 
 **Contracts (canonical):**
 
-- **Router surface:** `appRouter` from `src/routers/index.ts`; type `AppRouter` for client. Procedures: `healthCheck`, `leads.list` / `leads.stats` / `leads.importFromCsv` / `leads.runTestData`, `ranking.start` / `ranking.progress` / `ranking.availableProviders`, `optimizer.start` / `optimizer.startSession` / `optimizer.progress` / `optimizer.history` / `optimizer.activate` / `optimizer.evalSetInfo`, `export.topLeadsPerCompany`.
+- **Router surface:** `appRouter` from `src/routers/index.ts`; type `AppRouter` for client. Procedures: `healthCheck`, `leads.list` / `leads.stats` / `leads.importFromCsv` / `leads.runTestData` / `leads.clearAll`, `ranking.start` / `ranking.progress` / `ranking.availableProviders`, `optimizer.start` / `optimizer.startSession` / `optimizer.progress` / `optimizer.history` / `optimizer.activate` / `optimizer.evalSetInfo`, `export.topLeadsPerCompany`.
 - **AI providers:** openai, anthropic, gemini. Config from env; init via `initAIProvider` in routers that need AI. Ranking and optimization run as background processes keyed by `batchId`/`runId`; progress stored in-memory (Map). Session optimization can override the ranking prompt in-memory and session-scoped AI stats are derived from session batch IDs.
 - **Prompt fallback:** Ranking auto-creates the default prompt if no active prompt exists, so first-run ranking can proceed without manual seeding.
 - **DB bootstrap:** API context calls `ensureDbSchema()` so tables exist before handling requests.
@@ -19,4 +19,4 @@
 | Services: AI provider | `src/services/ai-provider.ts` | Multi-provider chat, pricing, `getAIProvider` / `initAIProvider` |
 | Services: Ranking | `src/services/ranking.ts` | Ranking process, prompt building, progress, DB writes for rankings/aiCallLogs |
 
-**Summary:** API package is the tRPC backend: leads CRUD and import, AI ranking (per-company batches, progress polling), session-based prompt optimization, and export (top N per company). Services encapsulate AI calls and ranking pipeline, and leads queries return value-typed rows while logging underlying DB failures before returning a user-facing error.
+**Summary:** API package is the tRPC backend: leads CRUD/import/clear, AI ranking (per-company batches, progress polling), session-based prompt optimization, and export (top N per company). Services encapsulate AI calls and ranking pipeline, and leads list queries join the latest ranking per lead while logging DB failures before returning a user-facing error.

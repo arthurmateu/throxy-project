@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileUp, Loader2, Play } from "lucide-react";
+import { FileUp, Loader2 } from "lucide-react";
 import { useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -22,19 +22,13 @@ export function DataImport() {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const importFromCsv = useMutation(trpc.leads.importFromCsv.mutationOptions());
-	const runTestData = useMutation(trpc.leads.runTestData.mutationOptions());
-
-	const isAnyPending = importFromCsv.isPending || runTestData.isPending;
+	const isAnyPending = importFromCsv.isPending;
 
 	const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		if (!file) return;
 		const reader = new FileReader();
 		reader.onload = () => {
-			if (runTestData.isPending) {
-				toast.error("Please wait for the current operation to finish.");
-				return;
-			}
 			const csv = reader.result as string;
 			importFromCsv.mutate(
 				{ csv },
@@ -56,27 +50,12 @@ export function DataImport() {
 		e.target.value = "";
 	};
 
-	const handleRunTestData = () => {
-		runTestData.mutate(undefined, {
-			onSuccess: (data) => {
-				queryClient.invalidateQueries({ queryKey: [["leads"]] });
-				queryClient.invalidateQueries({ queryKey: [["leads", "stats"]] });
-				toast.success("Test data loaded", {
-					description: data.message,
-				});
-			},
-			onError: (err) => {
-				toast.error("Failed to load test data", { description: err.message });
-			},
-		});
-	};
-
 	return (
 		<Card>
 			<CardHeader>
 				<CardTitle>Data</CardTitle>
 				<CardDescription>
-					Import your own CSV or load built-in test data (leads.csv).
+					Import your own CSV.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="flex flex-wrap items-center gap-3">
@@ -100,19 +79,6 @@ export function DataImport() {
 						<FileUp className="h-4 w-4" />
 					)}
 					<span className="ml-2">Import .csv</span>
-				</Button>
-				<Button
-					variant="secondary"
-					size="sm"
-					onClick={handleRunTestData}
-					disabled={isAnyPending}
-				>
-					{runTestData.isPending ? (
-						<Loader2 className="h-4 w-4 animate-spin" />
-					) : (
-						<Play className="h-4 w-4" />
-					)}
-					<span className="ml-2">Run test data</span>
 				</Button>
 			</CardContent>
 		</Card>

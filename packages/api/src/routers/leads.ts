@@ -5,6 +5,7 @@ import * as schema from "@throxy-interview/db/schema";
 import { DEFAULT_PROMPT, parseLeadsCSV } from "@throxy-interview/db/seed-utils";
 import { z } from "zod";
 import { publicProcedure, router } from "../index";
+import { clearAllData } from "../services/clear-data";
 import { getLeadsWithRankings, getRankingStats } from "../services/ranking";
 
 const { leads, rankings, prompts } = schema;
@@ -103,5 +104,11 @@ export const leadsRouter = router({
 			message:
 				"Test data loaded (leads + default prompt). Use Prompt Optimizer to run against eval_set.csv.",
 		};
+	}),
+
+	/** Clear all data for testing (leads, rankings, prompts, AI logs). */
+	clearAll: publicProcedure.mutation(async () => {
+		await clearAllData();
+		return { success: true };
 	}),
 });

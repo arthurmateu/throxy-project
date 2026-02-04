@@ -191,7 +191,7 @@ const parseRankingItem = (item: {
 };
 
 /** Parse the ranking response into results */
-const parseRankingResponse = (
+export const parseRankingResponse = (
 	response: string,
 	leadIds: string[],
 ): RankingResult[] => {
@@ -216,10 +216,14 @@ const parseRankingResponse = (
 		const result = parseRankingItem(
 			item as { leadId?: string; rank?: number | null; reasoning?: string },
 		);
-		if (result && leadIds.includes(result.leadId)) {
-			results.push(result);
-			processedIds.add(result.leadId);
+		if (!result || !leadIds.includes(result.leadId)) {
+			continue;
 		}
+		if (processedIds.has(result.leadId)) {
+			continue;
+		}
+		results.push(result);
+		processedIds.add(result.leadId);
 	}
 
 	// Add missing leads as failed
@@ -625,6 +629,15 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 	};
 
 	try {
+		const latestRankings = db
+			.select({
+				leadId: rankings.leadId,
+				createdAt: sql`max(${rankings.createdAt})`.as("createdAt"),
+			})
+			.from(rankings)
+			.groupBy(rankings.leadId)
+			.as("latest_rankings");
+
 		const relevantFilter = showIrrelevant
 			? undefined
 			: sql`${rankings.rank} IS NOT NULL`;
@@ -646,7 +659,14 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 		let query = db
 			.select(baseSelect)
 			.from(leads)
-			.leftJoin(rankings, eq(leads.id, rankings.leadId));
+			.leftJoin(latestRankings, eq(leads.id, latestRankings.leadId))
+			.leftJoin(
+				rankings,
+				and(
+					eq(rankings.leadId, latestRankings.leadId),
+					eq(rankings.createdAt, latestRankings.createdAt),
+				),
+			);
 
 		if (!showIrrelevant && relevantFilter) {
 			query = query.where(and(relevantFilter)) as typeof query;
@@ -675,11 +695,21 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 
 		let countResult: { count: number }[];
 		try {
-			countResult = await db
-				.select({ count: sql<number>`count(*)` })
-				.from(leads)
-				.leftJoin(rankings, eq(leads.id, rankings.leadId))
-				.where(relevantFilter ?? sql`true`);
+			const countQuery = showIrrelevant
+				? db.select({ count: sql<number>`count(*)` }).from(leads)
+				: db
+						.select({ count: sql<number>`count(*)` })
+						.from(leads)
+						.leftJoin(latestRankings, eq(leads.id, latestRankings.leadId))
+						.leftJoin(
+							rankings,
+							and(
+								eq(rankings.leadId, latestRankings.leadId),
+								eq(rankings.createdAt, latestRankings.createdAt),
+							),
+						)
+						.where(relevantFilter ?? sql`true`);
+			countResult = await countQuery;
 		} catch (error) {
 			logDbError("Leads count query failed", error, {
 				page,

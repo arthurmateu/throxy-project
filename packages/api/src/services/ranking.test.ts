@@ -113,3 +113,23 @@ describe("selectPromptForRanking", () => {
 		expect(selected.version).toBe(2);
 	});
 });
+
+describe("parseRankingResponse", () => {
+	test("dedupes duplicate lead IDs from AI response", async () => {
+		setupMockDb([]);
+		const { parseRankingResponse } = await import("./ranking");
+
+		const response = JSON.stringify({
+			rankings: [
+				{ leadId: "lead-1", rank: 1, reasoning: "first" },
+				{ leadId: "lead-1", rank: 2, reasoning: "duplicate" },
+				{ leadId: "lead-2", rank: 3, reasoning: "second" },
+			],
+		});
+
+		const results = parseRankingResponse(response, ["lead-1", "lead-2"]);
+
+		expect(results).toHaveLength(2);
+		expect(results.filter((r) => r.leadId === "lead-1")).toHaveLength(1);
+	});
+});
