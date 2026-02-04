@@ -5,7 +5,15 @@
 		"build": {
 			"dependsOn": ["^build"],
 			"inputs": ["$TURBO_DEFAULT$", ".env*"],
-			"outputs": ["dist/**", ".next/**"]
+			"outputs": ["dist/**", ".next/**", "apps/*/.next/**"],
+			"env": [
+				"DATABASE_URL",
+				"CORS_ORIGIN",
+				"OPENAI_API_KEY",
+				"ANTHROPIC_API_KEY",
+				"GEMINI_API_KEY",
+				"AI_PROVIDER"
+			]
 		},
 		"lint": {
 			"dependsOn": ["^lint"]

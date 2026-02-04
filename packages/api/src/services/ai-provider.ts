@@ -5,6 +5,10 @@ import OpenAI from "openai";
 // Types
 // ============================================================================
 
+/** Instance types for SDK clients. Use default-import as type (instance type in TS); avoid InstanceType<typeof X> for ESM/strict build compatibility. */
+type OpenAIClient = OpenAI;
+type AnthropicClient = Anthropic;
+
 export type AIProvider = "openai" | "anthropic" | "gemini";
 
 export interface AIMessage {
@@ -36,9 +40,9 @@ export interface AIProviderConfig {
 }
 
 interface AIClients {
-	openai: OpenAI | null;
-	anthropic: Anthropic | null;
-	gemini: OpenAI | null;
+	openai: OpenAIClient | null;
+	anthropic: AnthropicClient | null;
+	gemini: OpenAIClient | null;
 }
 
 // ============================================================================
@@ -142,16 +146,26 @@ export const getAvailableProviders = (
 // Client Factory (Pure)
 // ============================================================================
 
+/** Constructor type for OpenAI (cast via unknown for ESM/strict builds where default export is not seen as constructor) */
+const OpenAICtor = OpenAI as unknown as new (options: {
+	apiKey: string;
+	baseURL?: string;
+}) => OpenAIClient;
+/** Constructor type for Anthropic */
+const AnthropicCtor = Anthropic as unknown as new (options: {
+	apiKey: string;
+}) => AnthropicClient;
+
 /** Create AI clients from config - pure function, no side effects */
 const createClients = (config: AIProviderConfig): AIClients => ({
 	openai: config.openaiApiKey
-		? new OpenAI({ apiKey: config.openaiApiKey })
+		? new OpenAICtor({ apiKey: config.openaiApiKey })
 		: null,
 	anthropic: config.anthropicApiKey
-		? new Anthropic({ apiKey: config.anthropicApiKey })
+		? new AnthropicCtor({ apiKey: config.anthropicApiKey })
 		: null,
 	gemini: config.geminiApiKey
-		? new OpenAI({
+		? new OpenAICtor({
 				apiKey: config.geminiApiKey,
 				baseURL: GEMINI_BASE_URL,
 			})
@@ -163,7 +177,7 @@ const createClients = (config: AIProviderConfig): AIClients => ({
 // ============================================================================
 
 const chatWithOpenAI = async (
-	client: OpenAI,
+	client: OpenAIClient,
 	messages: AIMessage[],
 	options: ChatOptions,
 	startTime: number,
@@ -189,7 +203,7 @@ const chatWithOpenAI = async (
 };
 
 const chatWithGemini = async (
-	client: OpenAI,
+	client: OpenAIClient,
 	messages: AIMessage[],
 	options: ChatOptions,
 	startTime: number,
@@ -215,7 +229,7 @@ const chatWithGemini = async (
 };
 
 const chatWithAnthropic = async (
-	client: Anthropic,
+	client: AnthropicClient,
 	messages: AIMessage[],
 	options: ChatOptions,
 	startTime: number,

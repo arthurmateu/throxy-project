@@ -145,6 +145,20 @@ GEMINI_API_KEY=...   # From Google AI Studio (https://aistudio.google.com/apikey
 AI_PROVIDER=openai   # Default provider: openai | anthropic | gemini
 ```
 
+## Vercel Deployment Checklist
+
+- Set the Vercel project root to `apps/web` (single project).
+- Build command: `bunx turbo run build --filter web`
+- Output directory: `.next`
+- Environment variables in Vercel:
+  - `NEXT_PUBLIC_SERVER_URL` = your Vercel deployment URL (same origin)
+  - `DATABASE_URL` = production Postgres connection string
+  - `CORS_ORIGIN` = same origin as `NEXT_PUBLIC_SERVER_URL`
+  - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` (at least one)
+  - `AI_PROVIDER` (optional; default `openai`)
+- Turbo repo note: keep these env vars listed under `tasks.build.env` in `turbo.json` so Vercel passes them through.
+- Verify the API is reachable at `https://<your-domain>/api/trpc`
+
 ### Supported AI providers
 - **OpenAI** – set `OPENAI_API_KEY` for GPT models (e.g. gpt-4o-mini).
 - **Anthropic** – set `ANTHROPIC_API_KEY` for Claude models.

@@ -62,6 +62,7 @@ const DEFAULT_QUERY_OPTIONS: Required<LeadsQueryOptions> = {
 	sortBy: "rank",
 	sortOrder: "asc",
 	showIrrelevant: true,
+	topPerCompany: 0,
 };
 
 // ============================================================================

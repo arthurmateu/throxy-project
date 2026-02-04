@@ -2,7 +2,7 @@
 
 **Intent:** HTTP server that mounts the tRPC app router. Entrypoint for all API traffic from the web app.
 
-**Scope:** Single app in `src/index.ts`: Hono app with logger, CORS (origin from `@throxy-interview/env/server`), and tRPC mounted at `/trpc/*` via `@hono/trpc-server`. Root route `GET /` returns "OK". No auth; context from Hono only.
+**Scope:** Single app in `src/index.ts`: Hono app with logger, CORS (origin from `@throxy-interview/env/server`), and tRPC mounted at `/trpc/*` and `/api/trpc/*` via `@hono/trpc-server`. Root route `GET /` returns "OK". No auth; context from Hono only.
 
 **Contracts (canonical):**
 
@@ -11,4 +11,4 @@
 
 **Downlinks:** None (single-file app).
 
-**Summary:** Server is a thin Hono wrapper: middleware (logger, CORS) and tRPC at `/trpc/*`. All procedure logic lives in `@throxy-interview/api`; server only wires router and context.
+**Summary:** Server is a thin Hono wrapper: middleware (logger, CORS) and tRPC at `/trpc/*` and `/api/trpc/*`. All procedure logic lives in `@throxy-interview/api`; server only wires router and context.

@@ -21,4 +21,4 @@
 | Next.js frontend | [apps/web/SUMMARY.md](./apps/web/SUMMARY.md) | UI, pages, components |
 | Hono API server | [apps/server/SUMMARY.md](./apps/server/SUMMARY.md) | HTTP, CORS, tRPC mount |
 
-**Summary:** Apps: `web` (Next.js, Persona Ranker UI) and `server` (Hono, tRPC). Packages: `db` (Drizzle, leads/rankings/prompts/aiCallLogs), `api` (tRPC app router: leads, ranking, export), `env` (server + web validated env), `config` (shared tsconfig). Data flow: CSV → leads; active prompt + AI → rankings; export → top N per company.
+**Summary:** Apps: `web` (Next.js, Persona Ranker UI) and `server` (Hono, tRPC). Packages: `db` (Drizzle, leads/rankings/prompts/aiCallLogs), `api` (tRPC app router: leads, ranking, export), `env` (server + web validated env), `config` (shared tsconfig). Data flow: CSV → leads; active prompt + AI → rankings; export → top N per company; tRPC served at `/api/trpc/*` for Vercel.

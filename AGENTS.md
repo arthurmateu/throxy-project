@@ -7,6 +7,7 @@
 
 ## Testing instructions
 - If the repo has CI, check the `.github/workflows` folder for the plan.
+- **CI must run `bun run check-types`** before (or as part of) any build so type errors are caught before deploy (e.g. Vercel post-build type-check failures). Do not add or change CI in a way that skips type-check.
 - Run `bunx turbo run build` (or the relevant task) to verify the monorepo builds.
 - From the package root you can run that package’s scripts (e.g. `bun run dev` in `apps/web`). The commit should pass all checks before you merge.
 - Fix any type errors: use `bun run check-types` at the repo root, and fix until the suite is green.
@@ -15,6 +16,7 @@
 ## PR instructions
 - Title format: `[<package_name>] <Title>` (e.g. `[web] Add dark mode`).
 - Always run `bun run check` and `bun run check-types` (and any tests) before committing.
+- Never merge if CI is red; type-check in CI prevents deploy failures (e.g. Vercel failing on post-build TypeScript checks).
 
 ## Hierarchical summarization
 

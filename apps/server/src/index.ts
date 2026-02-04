@@ -26,6 +26,15 @@ app.use(
 		},
 	}),
 );
+app.use(
+	"/api/trpc/*",
+	trpcServer({
+		router: appRouter,
+		createContext: (_opts, context) => {
+			return createContext({ context });
+		},
+	}),
+);
 
 app.get("/", (c) => {
 	return c.text("OK");
