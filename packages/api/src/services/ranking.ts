@@ -1,5 +1,6 @@
 import { db } from "@throxy-interview/db";
 import * as schema from "@throxy-interview/db/schema";
+import { DEFAULT_PROMPT } from "@throxy-interview/db/seed-utils";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { type AIProvider, type AIResponse, getAIProvider } from "./ai-provider";
 
@@ -289,33 +290,71 @@ const calculatePagination = (
 // Database Operations
 // ============================================================================
 
-/** Fetch the active prompt from database */
-export const getActivePrompt = async (): Promise<string> => {
+type ActivePrompt = { content: string; version: number };
+
+const fetchActivePromptRow = async (): Promise<ActivePrompt | null> => {
 	const activePrompt = await db
-		.select()
+		.select({ content: prompts.content, version: prompts.version })
 		.from(prompts)
 		.where(eq(prompts.isActive, true))
 		.orderBy(desc(prompts.version))
 		.limit(1);
 
-	if (activePrompt.length === 0 || !activePrompt[0]) {
-		throw new Error("No active prompt found. Please run the seed script.");
-	}
-
-	return activePrompt[0].content;
+	return activePrompt[0] ?? null;
 };
 
-/** Fetch the active prompt version */
-export const getActivePromptVersion = async (): Promise<number> => {
-	const activePrompt = await db
+const fetchLatestPromptVersion = async (): Promise<number> => {
+	const latestPrompt = await db
 		.select({ version: prompts.version })
 		.from(prompts)
-		.where(eq(prompts.isActive, true))
 		.orderBy(desc(prompts.version))
 		.limit(1);
 
-	return activePrompt[0]?.version ?? 1;
+	return latestPrompt[0]?.version ?? 0;
 };
+
+const createDefaultPrompt = async (): Promise<number> => {
+	const nextVersion = (await fetchLatestPromptVersion()) + 1;
+	await db.insert(prompts).values({
+		version: nextVersion,
+		content: DEFAULT_PROMPT,
+		isActive: true,
+		generation: 0,
+	});
+	return nextVersion;
+};
+
+const ensureActivePrompt = async (): Promise<ActivePrompt> => {
+	const existing = await fetchActivePromptRow();
+	if (existing) return existing;
+
+	try {
+		await createDefaultPrompt();
+	} catch (error) {
+		console.error("Failed to create default prompt", {
+			error: error instanceof Error ? error.message : String(error),
+		});
+	}
+
+	const activePrompt = await fetchActivePromptRow();
+	if (!activePrompt) {
+		throw new Error("No active prompt found. Default prompt creation failed.");
+	}
+
+	return activePrompt;
+};
+
+/** Fetch the active prompt from database */
+export const getActivePrompt = async (): Promise<string> =>
+	(await ensureActivePrompt()).content;
+
+/** Fetch the active prompt version */
+export const getActivePromptVersion = async (): Promise<number> =>
+	(await ensureActivePrompt()).version;
+
+/** Fetch the active prompt and version */
+export const getActivePromptWithVersion = async (): Promise<ActivePrompt> =>
+	ensureActivePrompt();
 
 /** Fetch all leads for ranking */
 const fetchAllLeads = async (): Promise<LeadForRanking[]> =>
@@ -432,10 +471,8 @@ export const runRankingProcess = async (
 			status: "running",
 		});
 
-		const [systemPrompt, promptVersion] = await Promise.all([
-			getActivePrompt(),
-			getActivePromptVersion(),
-		]);
+		const { content: systemPrompt, version: promptVersion } =
+			await getActivePromptWithVersion();
 
 		await clearAllRankings();
 

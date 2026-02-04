@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
 import * as schema from "./schema";
+
 export { ensureDbSchema } from "./ensure-schema";
 
 const globalForDb = globalThis as typeof globalThis & {

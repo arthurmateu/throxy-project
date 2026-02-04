@@ -1,0 +1,90 @@
+import { describe, expect, mock, test } from "bun:test";
+import { DEFAULT_PROMPT } from "@throxy-interview/db/seed-utils";
+
+type PromptRow = {
+	version: number;
+	content: string;
+	isActive: boolean;
+	generation?: number | null;
+};
+
+const createDbMock = (initialPrompts: PromptRow[]) => {
+	const state = { prompts: [...initialPrompts] };
+
+	const select = (fields?: Record<string, unknown>) => {
+		const context = { fields, whereActive: false };
+		const execute = async () => {
+			let rows = [...state.prompts];
+			if (context.whereActive) {
+				rows = rows.filter((row) => row.isActive);
+			}
+			rows.sort((a, b) => b.version - a.version);
+			const selected = rows.slice(0, 1).map((row) => {
+				if (!context.fields) return row;
+				const result: Record<string, unknown> = {};
+				for (const key of Object.keys(context.fields)) {
+					result[key] = row[key as keyof PromptRow];
+				}
+				return result;
+			});
+			return selected;
+		};
+
+		const query = {
+			from: () => query,
+			where: () => {
+				context.whereActive = true;
+				return query;
+			},
+			orderBy: () => ({ limit: execute }),
+			limit: execute,
+		};
+
+		return query;
+	};
+
+	const insert = () => ({
+		values: async (value: PromptRow) => {
+			const exists = state.prompts.some((row) => row.version === value.version);
+			if (exists) {
+				const error = new Error(
+					"duplicate key value violates unique constraint",
+				);
+				(error as { code?: string }).code = "23505";
+				throw error;
+			}
+			state.prompts.push(value);
+		},
+	});
+
+	return { db: { select, insert }, state };
+};
+
+const setupMockDb = (initialPrompts: PromptRow[]) => {
+	const { db, state } = createDbMock(initialPrompts);
+
+	mock.module("@throxy-interview/db", () => ({ db }));
+	mock.module("@throxy-interview/db/schema", () => ({
+		prompts: { content: "content", version: "version", isActive: "isActive" },
+		leads: {},
+		rankings: {},
+		aiCallLogs: {},
+	}));
+
+	return state;
+};
+
+describe("getActivePromptWithVersion", () => {
+	test("inserts and returns default prompt when none exists", async () => {
+		const state = setupMockDb([]);
+
+		const { getActivePromptWithVersion } = await import("./ranking");
+
+		const prompt = await getActivePromptWithVersion();
+
+		expect(prompt.content).toBe(DEFAULT_PROMPT);
+		expect(prompt.version).toBe(1);
+		expect(state.prompts).toHaveLength(1);
+		expect(state.prompts[0]?.isActive).toBe(true);
+	});
+});
