@@ -33,4 +33,4 @@ export const env = createEnv({
 	server: serverSchema,
 	runtimeEnv: process.env,
 	emptyStringAsUndefined: true,
-} as any) as Readonly<ServerEnv>;
+}) as Readonly<ServerEnv>;

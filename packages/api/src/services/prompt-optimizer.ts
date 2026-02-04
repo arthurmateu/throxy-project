@@ -2,6 +2,7 @@ import { db } from "@throxy-interview/db";
 import * as schema from "@throxy-interview/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { type AIProvider, getAIProvider } from "./ai-provider";
+import { setSessionOptimizedPrompt } from "./session-store";
 
 const { prompts, aiCallLogs } = schema;
 
@@ -37,6 +38,8 @@ export interface OptimizationProgress {
 	bestFitness: number;
 	currentBestPrompt?: string;
 	evaluationsRun: number;
+	evaluationsPlanned: number;
+	percentComplete: number;
 	error?: string;
 }
 
@@ -61,6 +64,8 @@ interface OptimizationOptions {
 	sampleSize?: number;
 }
 
+type OptimizationCompletion = (candidate: PromptCandidate) => Promise<void>;
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -72,6 +77,8 @@ const DEFAULT_PROGRESS: OptimizationProgress = {
 	populationSize: 0,
 	bestFitness: 0,
 	evaluationsRun: 0,
+	evaluationsPlanned: 0,
+	percentComplete: 0,
 };
 
 const DEFAULT_OPTIONS: Required<OptimizationOptions> = {
@@ -85,6 +92,41 @@ const DEFAULT_OPTIONS: Required<OptimizationOptions> = {
 const PROMPT_PREVIEW_LENGTH = 200;
 const TOURNAMENT_SIZE = 3;
 const QUICK_EVAL_SAMPLE_SIZE = 10;
+const COMPANY_EVAL_CONCURRENCY = 3;
+const POPULATION_EVAL_CONCURRENCY = 2;
+
+const calculatePercentComplete = (
+	evaluationsRun: number,
+	evaluationsPlanned: number,
+): number => {
+	if (evaluationsPlanned <= 0) return 0;
+	const raw = Math.round((evaluationsRun / evaluationsPlanned) * 100);
+	return Math.min(100, Math.max(0, raw));
+};
+
+const runWithConcurrency = async <T, R>(
+	items: T[],
+	limit: number,
+	task: (item: T, index: number) => Promise<R>,
+): Promise<R[]> => {
+	if (items.length === 0) return [];
+	const safeLimit = Math.max(1, Math.min(limit, items.length));
+	const results = new Array<R>(items.length);
+	let index = 0;
+
+	const worker = async () => {
+		while (index < items.length) {
+			const currentIndex = index;
+			index += 1;
+			const item = items[currentIndex];
+			if (item === undefined) continue;
+			results[currentIndex] = await task(item, currentIndex);
+		}
+	};
+
+	await Promise.all(Array.from({ length: safeLimit }, () => worker()));
+	return results;
+};
 
 // ============================================================================
 // Progress State Management
@@ -103,6 +145,10 @@ const updateOptimizationProgress = (
 ): OptimizationProgress => {
 	const current = getOptimizationProgress(runId);
 	const updated = { ...current, ...update };
+	updated.percentComplete = calculatePercentComplete(
+		updated.evaluationsRun,
+		updated.evaluationsPlanned,
+	);
 	optimizationProgressMap.set(runId, updated);
 	return updated;
 };
@@ -389,18 +435,20 @@ const evaluatePrompt = async (
 	runId: string,
 ): Promise<{ fitness: number; predictions: Prediction[] }> => {
 	const companiesMap = groupByCompany(evalLeads);
-	const predictions: Prediction[] = [];
-
-	for (const [company, companyLeads] of companiesMap.entries()) {
-		const companyPredictions = await evaluateCompanyBatch(
-			promptContent,
-			company,
-			companyLeads,
-			provider,
-			runId,
-		);
-		predictions.push(...companyPredictions);
-	}
+	const companies = Array.from(companiesMap.entries());
+	const perCompanyPredictions = await runWithConcurrency(
+		companies,
+		COMPANY_EVAL_CONCURRENCY,
+		([company, companyLeads]) =>
+			evaluateCompanyBatch(
+				promptContent,
+				company,
+				companyLeads,
+				provider,
+				runId,
+			),
+	);
+	const predictions = perCompanyPredictions.flat();
 
 	return { fitness: calculateFitness(predictions), predictions };
 };
@@ -676,11 +724,14 @@ const evaluatePopulation = async (
 	runId: string,
 	startFrom = 0,
 ): Promise<number> => {
-	let evaluationsRun = 0;
+	const indices = Array.from(
+		{ length: Math.max(0, population.length - startFrom) },
+		(_, i) => i + startFrom,
+	);
 
-	for (let i = startFrom; i < population.length; i++) {
+	await runWithConcurrency(indices, POPULATION_EVAL_CONCURRENCY, async (i) => {
 		const candidate = population[i];
-		if (!candidate) continue;
+		if (!candidate) return;
 		const { fitness } = await evaluatePrompt(
 			candidate.content,
 			evalLeads,
@@ -688,10 +739,9 @@ const evaluatePopulation = async (
 			runId,
 		);
 		candidate.fitness = fitness;
-		evaluationsRun++;
-	}
+	});
 
-	return evaluationsRun;
+	return indices.length;
 };
 
 /** Sort population by fitness (descending) */
@@ -766,6 +816,7 @@ const runGeneration = async (
 	newPopulation: PromptCandidate[];
 	nextVersion: number;
 	evaluationsRun: number;
+	extraPlannedEvaluations: number;
 }> => {
 	const { populationSize, mutationRate, eliteCount } = options;
 
@@ -776,6 +827,7 @@ const runGeneration = async (
 
 	let currentVersion = nextVersion;
 	let evaluationsRun = 0;
+	let extraPlannedEvaluations = 0;
 
 	// Generate new candidates
 	while (newPopulation.length < populationSize) {
@@ -791,6 +843,7 @@ const runGeneration = async (
 		);
 		newPopulation.push(candidate);
 		evaluationsRun += extraEvaluations;
+		extraPlannedEvaluations += extraEvaluations;
 	}
 
 	// Evaluate new candidates (skip elites)
@@ -806,6 +859,7 @@ const runGeneration = async (
 		newPopulation: sortByFitness(newPopulation),
 		nextVersion: currentVersion,
 		evaluationsRun,
+		extraPlannedEvaluations,
 	};
 };
 
@@ -814,14 +868,17 @@ const runGeneration = async (
 // ============================================================================
 
 /** Run the prompt optimization process */
-export const runPromptOptimization = async (
+const runOptimizationCore = async (
 	evalLeads: EvalLead[],
 	provider: AIProvider,
 	runId: string,
+	onComplete: OptimizationCompletion,
 	options: OptimizationOptions = {},
 ): Promise<void> => {
 	const opts = { ...DEFAULT_OPTIONS, ...options };
-	const { populationSize, generations, sampleSize } = opts;
+	const { populationSize, generations, sampleSize, eliteCount } = opts;
+	const basePlannedEvaluations =
+		populationSize + generations * Math.max(0, populationSize - eliteCount);
 	const initialErrors = [
 		"- Initial evaluation: creating diverse variations to explore the solution space.",
 	];
@@ -834,6 +891,7 @@ export const runPromptOptimization = async (
 			currentGeneration: 0,
 			bestFitness: 0,
 			evaluationsRun: 0,
+			evaluationsPlanned: basePlannedEvaluations,
 		});
 
 		const basePrompt = await fetchBasePrompt();
@@ -885,7 +943,12 @@ export const runPromptOptimization = async (
 			population = result.newPopulation;
 			nextVersion = result.nextVersion;
 			totalEvaluations += result.evaluationsRun;
-			updateOptimizationProgress(runId, { evaluationsRun: totalEvaluations });
+			updateOptimizationProgress(runId, {
+				evaluationsRun: totalEvaluations,
+				evaluationsPlanned:
+					getOptimizationProgress(runId).evaluationsPlanned +
+					result.extraPlannedEvaluations,
+			});
 
 			const topCandidate = population[0];
 			if (topCandidate && topCandidate.fitness > bestCandidate.fitness) {
@@ -901,7 +964,7 @@ export const runPromptOptimization = async (
 			);
 		}
 
-		await saveBestPrompt(bestCandidate);
+		await onComplete(bestCandidate);
 
 		updateOptimizationProgress(runId, {
 			status: "completed",
@@ -915,6 +978,33 @@ export const runPromptOptimization = async (
 		throw error;
 	}
 };
+
+/** Run the prompt optimization process (persist to DB) */
+export const runPromptOptimization = async (
+	evalLeads: EvalLead[],
+	provider: AIProvider,
+	runId: string,
+	options: OptimizationOptions = {},
+): Promise<void> =>
+	runOptimizationCore(evalLeads, provider, runId, saveBestPrompt, options);
+
+/** Run the prompt optimization process (session-only) */
+export const runPromptOptimizationSession = async (
+	evalLeads: EvalLead[],
+	provider: AIProvider,
+	runId: string,
+	sessionId: string,
+	options: OptimizationOptions = {},
+): Promise<void> =>
+	runOptimizationCore(
+		evalLeads,
+		provider,
+		runId,
+		async (candidate) => {
+			setSessionOptimizedPrompt(sessionId, candidate.content);
+		},
+		options,
+	);
 
 // ============================================================================
 // Query Operations

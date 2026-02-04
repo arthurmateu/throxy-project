@@ -93,7 +93,7 @@ Every AI call is logged with:
 - [x] **Easy**: Sortable table by rank
 - [x] **Easy**: Export top N leads per company to CSV
 - [x] **Medium**: Real-time ranking progress updates
-- [ ] **Hard**: Automatic prompt optimization (genetic algorithm)
+- [x] **Hard**: Automatic prompt optimization
 
 ## Tradeoffs
 
@@ -104,6 +104,8 @@ Every AI call is logged with:
 3. **Simplified fitness function**: Uses rank distance + relevance accuracy. Could be improved with weighted scoring for different rank tiers.
 
 4. **No authentication**: As specified, no auth layer is implemented. Would need to add for production use.
+
+5. **Session-only optimization**: AI optimization runs on an uploaded eval CSV per browser session. Refreshing the page requires re-running optimization to reuse the tuned prompt.
 
 ## Project Structure
 

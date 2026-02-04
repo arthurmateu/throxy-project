@@ -8,6 +8,7 @@
 
 - **Package names:** Use `name` from each package's `package.json`. Main: `web`, `server`, `@throxy-interview/api`, `@throxy-interview/db`, `@throxy-interview/env`, `@throxy-interview/config`.
 - **Running tasks:** `bunx turbo run <task> --filter <package_name>`; deps installed at root with `bun install`.
+- **Node version (local):** Use Node 20.x for dev; `nvm use` reads `.nvmrc` at repo root.
 - **Type/lint:** `bun run check-types` and `bun run check` at root.
 
 **Downlinks:**

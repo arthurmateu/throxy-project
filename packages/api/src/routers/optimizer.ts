@@ -16,7 +16,9 @@ import {
 	type OptimizationProgress,
 	parseEvalSet,
 	runPromptOptimization,
+	runPromptOptimizationSession,
 } from "../services/prompt-optimizer";
+import { registerSessionAiBatchId } from "../services/session-store";
 
 // ============================================================================
 // Constants
@@ -138,6 +140,27 @@ const activateInputSchema = z.object({
 	version: z.number(),
 });
 
+const startSessionInputSchema = z.object({
+	sessionId: z.string().min(1),
+	csv: z.string().min(1),
+	provider: z.enum(["openai", "anthropic", "gemini"]).optional(),
+	populationSize: z
+		.number()
+		.min(3)
+		.max(20)
+		.default(DEFAULT_OPTIMIZATION_OPTIONS.populationSize),
+	generations: z
+		.number()
+		.min(1)
+		.max(20)
+		.default(DEFAULT_OPTIMIZATION_OPTIONS.generations),
+	sampleSize: z
+		.number()
+		.min(10)
+		.max(100)
+		.default(DEFAULT_OPTIMIZATION_OPTIONS.sampleSize),
+});
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -173,6 +196,44 @@ export const optimizerRouter = router({
 			evalLeadsCount: evalLeads.length,
 		};
 	}),
+
+	startSession: publicProcedure
+		.input(startSessionInputSchema)
+		.mutation(async ({ input }) => {
+			initializeAIProvider();
+
+			const provider = resolveProvider(input.provider);
+			const runId = generateRunId();
+			const evalLeads = parseEvalSet(input.csv);
+
+			if (evalLeads.length === 0) {
+				throw new Error(
+					"No evaluation data found. Ensure the CSV matches the eval_set format.",
+				);
+			}
+
+			registerSessionAiBatchId(input.sessionId, runId);
+
+			runPromptOptimizationSession(
+				evalLeads,
+				provider,
+				runId,
+				input.sessionId,
+				{
+					populationSize: input.populationSize,
+					generations: input.generations,
+					sampleSize: input.sampleSize,
+				},
+			).catch((error) => {
+				console.error("Session optimization failed:", error);
+			});
+
+			return {
+				runId,
+				message: "Session optimization started",
+				evalLeadsCount: evalLeads.length,
+			};
+		}),
 
 	progress: publicProcedure
 		.input(progressInputSchema)

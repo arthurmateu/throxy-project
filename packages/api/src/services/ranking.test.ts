@@ -1,5 +1,4 @@
 import { describe, expect, mock, test } from "bun:test";
-import { DEFAULT_PROMPT } from "@throxy-interview/db/seed-utils";
 
 type PromptRow = {
 	version: number;
@@ -60,16 +59,28 @@ const createDbMock = (initialPrompts: PromptRow[]) => {
 	return { db: { select, insert }, state };
 };
 
+mock.module("@throxy-interview/db/schema", () => ({
+	prompts: { content: "content", version: "version", isActive: "isActive" },
+	leads: { lastName: "lastName", accountName: "accountName" },
+	rankings: {
+		rank: "rank",
+		reasoning: "reasoning",
+		relevanceScore: "relevanceScore",
+		leadId: "leadId",
+	},
+	aiCallLogs: {
+		cost: "cost",
+		inputTokens: "inputTokens",
+		outputTokens: "outputTokens",
+		durationMs: "durationMs",
+		batchId: "batchId",
+	},
+}));
+
 const setupMockDb = (initialPrompts: PromptRow[]) => {
 	const { db, state } = createDbMock(initialPrompts);
 
 	mock.module("@throxy-interview/db", () => ({ db }));
-	mock.module("@throxy-interview/db/schema", () => ({
-		prompts: { content: "content", version: "version", isActive: "isActive" },
-		leads: {},
-		rankings: {},
-		aiCallLogs: {},
-	}));
 
 	return state;
 };
@@ -79,6 +90,7 @@ describe("getActivePromptWithVersion", () => {
 		const state = setupMockDb([]);
 
 		const { getActivePromptWithVersion } = await import("./ranking");
+		const { DEFAULT_PROMPT } = await import("@throxy-interview/db/seed-utils");
 
 		const prompt = await getActivePromptWithVersion();
 
@@ -86,5 +98,18 @@ describe("getActivePromptWithVersion", () => {
 		expect(prompt.version).toBe(1);
 		expect(state.prompts).toHaveLength(1);
 		expect(state.prompts[0]?.isActive).toBe(true);
+	});
+});
+
+describe("selectPromptForRanking", () => {
+	test("prefers session prompt when provided", async () => {
+		setupMockDb([]);
+		const { selectPromptForRanking } = await import("./ranking");
+
+		const activePrompt = { content: "base prompt", version: 2 };
+		const selected = selectPromptForRanking(activePrompt, "session prompt");
+
+		expect(selected.content).toBe("session prompt");
+		expect(selected.version).toBe(2);
 	});
 });

@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { DollarSign, UserCheck, Users, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getSessionId } from "@/utils/session";
 import { useTRPC } from "@/utils/trpc";
 
 function formatCost(cost: number): string {
@@ -19,7 +20,10 @@ function formatNumber(num: number): string {
 
 export function StatsCards() {
 	const trpc = useTRPC();
-	const { data: stats, isLoading } = useQuery(trpc.leads.stats.queryOptions());
+	const sessionId = getSessionId();
+	const { data: stats, isLoading } = useQuery(
+		trpc.leads.stats.queryOptions({ sessionId }),
+	);
 
 	if (isLoading) {
 		return (
@@ -77,7 +81,9 @@ export function StatsCards() {
 
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle className="font-medium text-sm">AI Cost</CardTitle>
+					<CardTitle className="font-medium text-sm">
+						AI Cost (Session)
+					</CardTitle>
 					<DollarSign className="h-4 w-4 text-muted-foreground" />
 				</CardHeader>
 				<CardContent>
@@ -92,7 +98,9 @@ export function StatsCards() {
 
 			<Card>
 				<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-					<CardTitle className="font-medium text-sm">Tokens Used</CardTitle>
+					<CardTitle className="font-medium text-sm">
+						Tokens Used (Session)
+					</CardTitle>
 					<Zap className="h-4 w-4 text-muted-foreground" />
 				</CardHeader>
 				<CardContent>

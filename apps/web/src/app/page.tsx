@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { AiOptimization } from "@/components/ai-optimization";
 import { DataImport } from "@/components/data-import";
 import { ExportButton } from "@/components/export-button";
 import { LeadsTable } from "@/components/leads-table";
@@ -45,6 +46,9 @@ export default function Home() {
 
 				{/* Data: Import CSV / Run test data */}
 				<DataImport />
+
+				{/* AI Optimization */}
+				<AiOptimization />
 
 				{/* Ranking Controls */}
 				<RankingControls />

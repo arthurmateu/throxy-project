@@ -51,9 +51,11 @@ export const leadsRouter = router({
 			return getLeadsWithRankings(options);
 		}),
 
-	stats: publicProcedure.query(async () => {
-		return getRankingStats();
-	}),
+	stats: publicProcedure
+		.input(z.object({ sessionId: z.string().min(1).optional() }).optional())
+		.query(async ({ input }) => {
+			return getRankingStats(input?.sessionId);
+		}),
 
 	/** Import leads from custom CSV (replaces existing leads). */
 	importFromCsv: publicProcedure

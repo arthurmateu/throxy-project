@@ -1,8 +1,13 @@
 import { db } from "@throxy-interview/db";
 import * as schema from "@throxy-interview/db/schema";
 import { DEFAULT_PROMPT } from "@throxy-interview/db/seed-utils";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { type AIProvider, type AIResponse, getAIProvider } from "./ai-provider";
+import {
+	getSessionAiBatchIds,
+	getSessionOptimizedPrompt,
+	registerSessionAiBatchId,
+} from "./session-store";
 
 const { leads, rankings, aiCallLogs, prompts } = schema;
 type NewRanking = schema.NewRanking;
@@ -292,6 +297,14 @@ const calculatePagination = (
 
 type ActivePrompt = { content: string; version: number };
 
+export const selectPromptForRanking = (
+	activePrompt: ActivePrompt,
+	sessionPrompt?: string,
+): ActivePrompt => ({
+	content: sessionPrompt ?? activePrompt.content,
+	version: activePrompt.version,
+});
+
 const fetchActivePromptRow = async (): Promise<ActivePrompt | null> => {
 	const activePrompt = await db
 		.select({ content: prompts.content, version: prompts.version })
@@ -459,6 +472,7 @@ const processCompany = async (
 export const runRankingProcess = async (
 	provider: AIProvider,
 	batchId: string,
+	sessionId?: string,
 ): Promise<void> => {
 	try {
 		const allLeads = await fetchAllLeads();
@@ -471,8 +485,13 @@ export const runRankingProcess = async (
 			status: "running",
 		});
 
-		const { content: systemPrompt, version: promptVersion } =
-			await getActivePromptWithVersion();
+		registerSessionAiBatchId(sessionId, batchId);
+
+		const sessionPrompt = getSessionOptimizedPrompt(sessionId);
+		const activePrompt = await getActivePromptWithVersion();
+		const selectedPrompt = selectPromptForRanking(activePrompt, sessionPrompt);
+		const systemPrompt = selectedPrompt.content;
+		const promptVersion = selectedPrompt.version;
 
 		await clearAllRankings();
 
@@ -524,7 +543,7 @@ const buildSortOrder = (sortBy: string, sortOrder: string) => {
 };
 
 /** Secondary sort: always by rank (best first) so e.g. company sort shows 1-1-7 not 1-7-1 */
-const RANK_SECONDARY_SORT = sql`COALESCE(${rankings.rank}, 999) ASC`;
+const getRankSecondarySort = () => sql`COALESCE(${rankings.rank}, 999) ASC`;
 
 const MAX_LEADS_FOR_TOP_N = 5000;
 
@@ -636,7 +655,7 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 		if (topPerCompany != null && topPerCompany > 0) {
 			// Fetch all (up to limit), filter to top N per company in memory, then paginate
 			const allRows = await query
-				.orderBy(buildSortOrder("rank", "asc"), RANK_SECONDARY_SORT)
+				.orderBy(buildSortOrder("rank", "asc"), getRankSecondarySort())
 				.limit(MAX_LEADS_FOR_TOP_N);
 			const { rows, totalCount } = filterTopPerCompanyAndPaginate(
 				allRows,
@@ -678,7 +697,7 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 		let results: LeadWithRanking[];
 		try {
 			results = await query
-				.orderBy(buildSortOrder(sortBy, sortOrder), RANK_SECONDARY_SORT)
+				.orderBy(buildSortOrder(sortBy, sortOrder), getRankSecondarySort())
 				.limit(pageSize)
 				.offset(offset);
 		} catch (error) {
@@ -708,16 +727,65 @@ export const getLeadsWithRankings = async (options: LeadsQueryOptions = {}) => {
 };
 
 /** Get ranking statistics */
-export const getRankingStats = async () => {
-	const [totalLeadsResult, rankedResult, relevantResult, aiStatsResult] =
-		await Promise.all([
-			db.select({ count: sql<number>`count(*)` }).from(leads),
-			db.select({ count: sql<number>`count(*)` }).from(rankings),
-			db
-				.select({ count: sql<number>`count(*)` })
-				.from(rankings)
-				.where(sql`${rankings.rank} IS NOT NULL`),
-			db
+const EMPTY_AI_STATS = {
+	totalCalls: 0,
+	totalCost: 0,
+	totalInputTokens: 0,
+	totalOutputTokens: 0,
+	avgDuration: 0,
+};
+
+type AiLogRow = {
+	cost: number;
+	inputTokens: number;
+	outputTokens: number;
+	durationMs: number;
+};
+
+export const summarizeAiLogs = (logs: AiLogRow[]) => {
+	if (logs.length === 0) return EMPTY_AI_STATS;
+	const totals = logs.reduce(
+		(acc, log) => ({
+			totalCalls: acc.totalCalls + 1,
+			totalCost: acc.totalCost + log.cost,
+			totalInputTokens: acc.totalInputTokens + log.inputTokens,
+			totalOutputTokens: acc.totalOutputTokens + log.outputTokens,
+			avgDuration: acc.avgDuration + log.durationMs,
+		}),
+		{
+			totalCalls: 0,
+			totalCost: 0,
+			totalInputTokens: 0,
+			totalOutputTokens: 0,
+			avgDuration: 0,
+		},
+	);
+
+	return {
+		...totals,
+		avgDuration:
+			totals.totalCalls > 0 ? totals.avgDuration / totals.totalCalls : 0,
+	};
+};
+
+const fetchSessionAiLogs = async (batchIds: string[]): Promise<AiLogRow[]> => {
+	if (batchIds.length === 0) return [];
+	return db
+		.select({
+			cost: aiCallLogs.cost,
+			inputTokens: aiCallLogs.inputTokens,
+			outputTokens: aiCallLogs.outputTokens,
+			durationMs: aiCallLogs.durationMs,
+		})
+		.from(aiCallLogs)
+		.where(inArray(aiCallLogs.batchId, batchIds));
+};
+
+export const getRankingStats = async (sessionId?: string) => {
+	const sessionBatchIds = getSessionAiBatchIds(sessionId);
+	const aiStatsPromise = sessionId
+		? fetchSessionAiLogs(sessionBatchIds).then(summarizeAiLogs)
+		: db
 				.select({
 					totalCalls: sql<number>`count(*)`,
 					totalCost: sql<number>`COALESCE(sum(${aiCallLogs.cost}), 0)`,
@@ -725,14 +793,23 @@ export const getRankingStats = async () => {
 					totalOutputTokens: sql<number>`COALESCE(sum(${aiCallLogs.outputTokens}), 0)`,
 					avgDuration: sql<number>`COALESCE(avg(${aiCallLogs.durationMs}), 0)`,
 				})
-				.from(aiCallLogs),
+				.from(aiCallLogs)
+				.then((rows) => rows[0] ?? EMPTY_AI_STATS);
+
+	const [totalLeadsResult, rankedResult, relevantResult, aiStats] =
+		await Promise.all([
+			db.select({ count: sql<number>`count(*)` }).from(leads),
+			db.select({ count: sql<number>`count(*)` }).from(rankings),
+			db
+				.select({ count: sql<number>`count(*)` })
+				.from(rankings)
+				.where(sql`${rankings.rank} IS NOT NULL`),
+			aiStatsPromise,
 		]);
 
 	const totalLeads = Number(totalLeadsResult[0]?.count ?? 0);
 	const rankedLeads = Number(rankedResult[0]?.count ?? 0);
 	const relevantLeads = Number(relevantResult[0]?.count ?? 0);
-	const aiStats = aiStatsResult[0];
-
 	return {
 		totalLeads,
 		rankedLeads,

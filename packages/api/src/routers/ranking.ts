@@ -48,6 +48,7 @@ const generateBatchId = (): string => `batch_${Date.now()}`;
 const startInputSchema = z
 	.object({
 		provider: z.enum(["openai", "anthropic", "gemini"]).optional(),
+		sessionId: z.string().min(1).optional(),
 	})
 	.optional();
 
@@ -65,9 +66,10 @@ export const rankingRouter = router({
 
 		const provider = resolveProvider(input?.provider);
 		const batchId = generateBatchId();
+		const sessionId = input?.sessionId;
 
 		// Start the ranking process in the background
-		runRankingProcess(provider, batchId).catch((error) => {
+		runRankingProcess(provider, batchId, sessionId).catch((error) => {
 			console.error("Ranking process failed:", error);
 		});
 

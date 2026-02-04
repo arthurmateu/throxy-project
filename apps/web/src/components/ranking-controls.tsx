@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, CheckCircle, Loader2, Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { getSessionId } from "@/utils/session";
 import { useTRPC } from "@/utils/trpc";
 
 // ============================================================================
@@ -19,7 +20,6 @@ import { useTRPC } from "@/utils/trpc";
 // ============================================================================
 
 type AIProvider = "openai" | "anthropic" | "gemini";
-type RankingStatus = "idle" | "running" | "completed" | "error";
 
 interface ProviderButtonProps {
 	provider: AIProvider;
@@ -28,10 +28,6 @@ interface ProviderButtonProps {
 	isDisabled: boolean;
 	isDefault?: boolean;
 	onStart: (provider: AIProvider) => void;
-}
-
-interface StatusIconProps {
-	status: RankingStatus | undefined;
 }
 
 interface ProgressBarProps {
@@ -56,19 +52,6 @@ const POLL_INTERVAL_MS = 1000;
 // ============================================================================
 // Pure Components
 // ============================================================================
-
-const StatusIcon = ({ status }: StatusIconProps) => {
-	switch (status) {
-		case "running":
-			return <Loader2 className="h-4 w-4 animate-spin text-primary" />;
-		case "completed":
-			return <CheckCircle className="h-4 w-4 text-green-500" />;
-		case "error":
-			return <AlertCircle className="h-4 w-4 text-destructive" />;
-		default:
-			return null;
-	}
-};
 
 const ProgressBar = ({
 	currentCompany,
@@ -140,6 +123,7 @@ const hasProviders = (providers: AIProvider[] | undefined): boolean =>
 export function RankingControls() {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
+	const sessionId = getSessionId();
 	const [batchId, setBatchId] = useState<string | null>(null);
 	const [isPolling, setIsPolling] = useState(false);
 
@@ -207,17 +191,14 @@ export function RankingControls() {
 	const availableProviders = providersData?.providers ?? [];
 
 	const handleStartRanking = useCallback(
-		(provider: AIProvider) => startRanking.mutate({ provider }),
-		[startRanking],
+		(provider: AIProvider) => startRanking.mutate({ provider, sessionId }),
+		[startRanking, sessionId],
 	);
 
 	return (
 		<Card>
 			<CardHeader>
-				<CardTitle className="flex items-center gap-2">
-					AI Ranking
-					<StatusIcon status={progress?.status} />
-				</CardTitle>
+				<CardTitle className="flex items-center gap-2">AI Ranking</CardTitle>
 				<CardDescription>
 					Run the AI ranking process to score and rank all leads against the
 					persona spec.
